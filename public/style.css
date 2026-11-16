@@ -17,3 +17,51 @@
 #hand .card{min-width:0}
 #hand .card:nth-child(n+8){margin-left:-15px}
 @media(max-width:390px){.mediaButtons button{font-size:10px}#topArea{flex-basis:37%}}
+
+/* Animações e estabilidade visual — versão de testes */
+#actions{grid-template-columns:repeat(5,minmax(0,1fr))}
+#actions button{font-size:clamp(9px,2.3vw,12px);letter-spacing:-.15px;padding:10px 1px}
+.peer video{display:block;width:100%;height:100%;object-fit:cover;transform:translateZ(0);backface-visibility:hidden}
+.peer video.selfVideo{transform:scaleX(-1) translateZ(0)}
+.peer.current{border-color:#f8d263;box-shadow:inset 0 0 0 1px #f9c541,0 0 14px #e9ac4160}
+.effectsLayer{position:fixed;inset:0;z-index:25;pointer-events:none;overflow:hidden}
+.flyingCard{position:fixed!important;width:60px!important;height:86px!important;min-height:0!important;max-width:none!important;flex:none!important;z-index:2;transform-origin:center;box-shadow:0 9px 24px #000b}
+.flyingCard.uno b{font-size:35px}
+.flightBack,.tableBack,.flipCardBack{
+  background:repeating-linear-gradient(45deg,#722b41 0,#722b41 6px,#a14c66 6px,#a14c66 12px);
+  border:3px solid #f7e1aa;color:#ffedb9;box-shadow:inset 0 0 0 3px #722b41,0 5px 16px #0008
+}
+.flightBack{display:grid;place-items:center;border-radius:10px;font-size:36px;font-weight:900}
+.tableBack{width:40px;height:57px;border-radius:7px;transform:rotate(-7deg);margin:0;display:grid;place-items:center}
+.tableBack::after{content:"?";font-size:27px;font-weight:900;color:#f6e9c2;text-shadow:0 2px 3px #0007}
+.tableCards.landed{animation:cardLand .5s cubic-bezier(.15,.8,.3,1)}
+@keyframes cardLand{0%{transform:scale(1.28) translateY(-8px);filter:brightness(1.55)}55%{transform:scale(.91) translateY(3px)}100%{transform:scale(1);filter:brightness(1)}}
+#tableTarget.hiddenFlash{animation:actionFlash .9s ease-out}
+@keyframes actionFlash{0%{color:#fff;transform:scale(1.24)}55%{color:#ffd475;transform:scale(1.03)}100%{color:#e5ddc7;transform:scale(1)}}
+.cinematic{background:radial-gradient(ellipse at center,#040b15bb,#020409ed)}
+.verdictPanel{position:relative;padding:22px 16px 24px!important;border:2px solid #637389!important;background:linear-gradient(160deg,#1e2d42,#0d1723)!important;overflow:hidden;animation:revealPanelIn .22s ease-out}
+@keyframes revealPanelIn{from{opacity:0;transform:translateY(18px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}
+.verdictEyebrow{font-size:11px;font-weight:900;color:#ead38f;letter-spacing:2.6px}
+#replayTitle{font-weight:1000;letter-spacing:.5px;font-size:clamp(20px,5vw,28px);min-height:36px;margin:8px 0 5px;color:#fff}
+.flipStage{perspective:900px;display:grid;place-items:center;margin:7px auto 14px;height:177px}
+.flipCard{position:relative;width:114px;height:160px;transform-style:preserve-3d;transition:transform 850ms cubic-bezier(.18,.76,.22,1.04);will-change:transform}
+.flipCard.isFlipped{transform:rotateY(180deg)}
+.flipCardSide{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:13px;backface-visibility:hidden;-webkit-backface-visibility:hidden;box-shadow:0 10px 23px #0009}
+.flipCardBack{font-size:65px;gap:9px}
+.flipCardBack small{font-size:10px;font-weight:900;letter-spacing:1.5px;color:#ffe7b7}
+.flipCardFront{transform:rotateY(180deg);background:#faf8f2;padding:0;border:0}
+.flipCardFront .card{width:100%!important;height:100%!important;min-height:0!important;max-width:none!important;flex:none!important}
+.flipCardFront .card b{font-size:52px}
+.verdictPanel #replayText{line-height:1.5;font-size:14px;margin:9px 5px 4px;color:#dbe5f2;min-height:44px}
+.verdictPanel .penaltyLabel{margin:0 auto 12px;min-height:18px;font-size:14px;font-weight:900;color:#efc681;opacity:0;transform:translateY(8px);transition:.35s}
+.verdictPanel.showResult .penaltyLabel{opacity:1;transform:translateY(0)}
+.verdictPanel.correct #replayTitle{color:#74f6ac;animation:resultPop .45s ease-out}
+.verdictPanel.incorrect #replayTitle{color:#ff8c9c;animation:resultPop .45s ease-out}
+.verdictPanel.correct{border-color:#47bf88!important;box-shadow:0 0 50px #16aa654d}
+.verdictPanel.incorrect{border-color:#ed6974!important;box-shadow:0 0 50px #d43c5552}
+@keyframes resultPop{0%{transform:scale(.86)}60%{transform:scale(1.08)}100%{transform:scale(1)}}
+.verdictPanel button{min-width:160px}
+@media (prefers-reduced-motion:reduce){
+  .flipCard{transition-duration:.01ms}
+  .verdictPanel,.verdictPanel.correct #replayTitle,.verdictPanel.incorrect #replayTitle,.tableCards.landed,#tableTarget.hiddenFlash{animation:none!important}
+}
