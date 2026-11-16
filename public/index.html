@@ -1,8 +1,12 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#111827"><title>Blefe Color — Testes</title><link rel="stylesheet" href="/static/style.css?v=20261116w07"></head><body>
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#111827"><title>Blefe Color — Testes</title><link rel="stylesheet" href="/static/style.css?v=20261116w08"></head><body>
 <div id="app">
- <section id="lobby" class="overlay"><div class="welcome"><div class="brand">♠ BLEFE <span>COLOR</span></div><p>Jogue, desconfie e descubra quem está mentindo.</p><div class="lobbyBalance"><span>SEU SALDO DE TESTE</span><strong id="lobbyBalance">R$ 50,00</strong><small>Dinheiro fictício, sem valor real</small></div><div class="lobbyTools"><button id="openWallet">Carteira</button><button id="openDonation">Apoiar via Pix</button></div><label>Seu nome<input id="nickname" maxlength="20" placeholder="Nome do jogador"></label><div class="stack"><button id="training" class="primary">Treinar com 3 adversários virtuais</button>
+ <section id="lobby" class="overlay"><div class="welcome"><div class="brand">♠ BLEFE <span>COLOR</span></div><p>Jogue, desconfie e descubra quem está mentindo.</p><div class="lobbyBalance"><span>SEU SALDO DE TESTE</span><strong id="lobbyBalance">R$ 50,00</strong><small>Dinheiro fictício, sem valor real</small></div><div class="lobbyTools"><button id="openWallet">Carteira</button><button id="openDonation">Apoiar via Pix</button></div><label>Seu nome<input id="nickname" maxlength="20" placeholder="Nome do jogador"></label><div class="stack">
+<button id="publicBrowse" class="primary">Encontrar salas públicas</button>
+<button id="training">Treinar com 3 adversários virtuais</button>
 <div class="createStakeField">
-  <label for="createStake">Entrada por jogador na sala (saldo de teste)</label>
+  <label for="roomVisibility">Tipo de sala</label>
+<select id="roomVisibility"><option value="private">Privada — somente convidados</option><option value="public">Pública — aparece na busca de partidas</option></select>
+<label for="createStake">Entrada por jogador na sala (saldo de teste)</label>
   <select id="createStake" required>
     <option value="" selected>Selecione o valor para criar a sala</option>
     <option value="0">Grátis — R$ 0,00</option>
@@ -21,7 +25,7 @@
 </div>
 <button id="create">Criar sala privada</button>
 <div class="join"><input id="roomcode" maxlength="6" placeholder="CÓDIGO DA SALA" autocapitalize="characters"><button id="join">Entrar</button></div>
-<div id="joinPreview" class="joinPreview" aria-live="polite" hidden></div></div><small>Versão 0.7 • Testes • Sem dinheiro real</small></div></section>
+<div id="joinPreview" class="joinPreview" aria-live="polite" hidden></div></div><small>Versão 0.8 • Testes • Sem dinheiro real</small></div></section>
  <section id="game" hidden>
   <header><div><strong>BLEFE COLOR</strong><small id="roomLabel"></small></div><div class="headActions"><button id="gameWallet" class="gameWallet" title="Consultar carteira">R$ 50,00</button><span id="connection">● Conectando</span><button id="helpBtn" title="Regras">?</button><button id="leaveBtn" title="Sair">✕</button></div></header>
   <div id="topArea"><div id="turnBanner">Aguardando jogadores...</div><div id="peerCameras" class="peerCameras"></div><div class="mediaButtons"><button id="voiceBtn">🎙 Ativar voz</button><button id="camBtn">📷 Câmera</button><button id="micBtn" disabled>🔊 Microfone ligado</button></div></div>
@@ -29,7 +33,15 @@
   <div id="bottomArea"><div class="handHeader"><b>SUAS CARTAS</b><span id="strikes">7 cartas</span></div><div id="hand"></div><div id="actions"><button id="challenge" class="danger" disabled>DESCONFIAR</button><button id="accept" disabled>ACREDITAR</button><button id="draw" disabled>COMPRAR 1</button><button id="bluff" disabled>BLEFAR</button><button id="play" class="primary" disabled>JOGAR</button></div><div id="turnHint">Aguardando início da partida.</div></div>
   <div id="waiting" class="waiting" hidden><b id="waitingTitle">Sala privada</b><p id="waitingList"></p><div id="waitingStake" class="waitingStake"></div><button id="copyInvite">Copiar convite</button><a id="whatsappInvite" class="primary whatsappLink" href="https://wa.me/" target="_blank" rel="noopener noreferrer">Compartilhar no WhatsApp</a><button id="startBtn" class="primary">Iniciar partida</button></div>
  </section>
- <div id="claimPanel" class="modal" hidden><div class="modalInner"><h2>O que você declara?</h2><p>A carta será colocada virada para baixo. Os outros só ouvirão sua declaração.</p><div class="claimGrid"><button data-claim="skip">BLOQUEIO</button><button data-claim="draw2">+2</button><button data-claim="draw4">+4</button><button data-claim="reverse">INVERTER</button></div><p>Cor escolhida para o +4 / curinga:</p><div id="colors" class="claimGrid"><button data-color="red">🔴</button><button data-color="yellow">🟡</button><button data-color="green">🟢</button><button data-color="blue">🔵</button></div><button id="cancelClaim">Cancelar</button></div></div><div id="walletModal" class="modal" hidden><div class="modalInner moneyModal"><div class="moneyEyebrow">CARTEIRA VIRTUAL</div><h2>Seu saldo de teste</h2><div class="walletTypeGrid">
+ <div id="publicRoomsModal" class="modal" hidden>
+  <div class="modalInner publicRoomsPanel">
+    <h2>Salas públicas</h2>
+    <p>Partidas abertas para jogar com outras pessoas. Todos os valores são fictícios.</p>
+    <div class="publicRoomsActions"><button id="publicRefresh">Atualizar salas</button><button id="publicClose">Voltar</button></div>
+    <div id="publicRoomsList" class="publicRoomsList" aria-live="polite">Buscando salas...</div>
+  </div>
+</div>
+<div id="claimPanel" class="modal" hidden><div class="modalInner"><h2>O que você declara?</h2><p>A carta será colocada virada para baixo. Os outros só ouvirão sua declaração.</p><div class="claimGrid"><button data-claim="skip">BLOQUEIO</button><button data-claim="draw2">+2</button><button data-claim="draw4">+4</button><button data-claim="reverse">INVERTER</button></div><p>Cor escolhida para o +4 / curinga:</p><div id="colors" class="claimGrid"><button data-color="red">🔴</button><button data-color="yellow">🟡</button><button data-color="green">🟢</button><button data-color="blue">🔵</button></div><button id="cancelClaim">Cancelar</button></div></div><div id="walletModal" class="modal" hidden><div class="modalInner moneyModal"><div class="moneyEyebrow">CARTEIRA VIRTUAL</div><h2>Seu saldo de teste</h2><div class="walletTypeGrid">
   <div class="walletType testWallet"><span>SALDO DE TESTE</span><strong id="walletBigBalance">R$ 50,00</strong><small>Disponível somente em partidas de teste</small></div>
   <div class="walletType realWallet"><span>SALDO REAL</span><strong id="walletRealBalance">R$ 0,00</strong><small>Bloqueado e indisponível nesta versão</small></div>
 </div><p class="walletDisclaimer">Cada novo jogador recebe R$ 50,00 fictícios ao começar. Esse saldo só serve para simular entradas e prêmios, não possui valor monetário, não pode ser convertido em dinheiro e não pode ser sacado. As carteiras de teste e real são independentes e seus valores nunca podem ser transferidos entre elas.</p><button id="addBalance" disabled>Adicionar saldo — em breve</button><p class="walletFootnote">Pix, App Store e Google Play não estão conectados. Nenhuma cobrança é feita aqui.</p><div id="walletTransactions" class="walletTransactions"></div><button id="closeWallet">Fechar carteira</button></div></div>
@@ -83,4 +95,4 @@
   </div>
  </div>
  <div id="guide" class="modal" hidden><div class="modalInner"><h2>Como jogar</h2><p>1. Cada jogador recebe sete cartas. Combine a cor ou o número da carta da mesa.</p><p>2. As cartas de ação são jogadas viradas para baixo. Você declara BLOQUEIO, +2, +4 ou INVERTER e pode blefar.</p><p>3. Ao receber um +2 ou +4, você pode empilhar outro +2 ou +4 que esteja na sua mão. A carta empilhada continua virada para baixo: você pode declarar +2 ou +4 e até blefar sobre seu valor.</p><p>4. A pilha soma todas as compras: +2, +4, +6, +8 e assim por diante. Quem não tiver +2 ou +4 deve aceitar e comprar tudo, ou duvidar da última declaração.</p><p>5. Se duvidar errado, compre a pilha inteira e mais uma carta. Se descobrir mentira, o último jogador compra duas cartas e a pilha é cancelada.</p><p>6. Vence quem ficar sem cartas. Fora de uma pilha, você pode comprar uma carta e passar a vez.</p><button id="closeGuide">Entendi</button></div></div>
-</div><script src="/static/app.js?v=20261116w07" defer></script></body></html>
+</div><script src="/static/app.js?v=20261116w08" defer></script></body></html>
