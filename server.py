@@ -119,6 +119,20 @@ def make_room(player, mode, stake=0, visibility='private'):
     player['room']=code
     return room
 
+def close_training_room(room):
+    """Encerra toda a sala de treino sem devolver entradas fictícias já debitadas."""
+    if room.get('mode')!='training':
+        raise ValueError('Apenas salas de treinamento podem ser encerradas aqui.')
+    forfeited=room.get('stake',0) if room['started'] and not room.get('winner') else 0
+    ROOMS.pop(room['code'],None)
+    room['pot_cents']=0
+    room['pending']=None
+    for member in room['players']:
+        member['room']=None
+        member['hand']=[]
+        member['media']=False
+    return forfeited
+
 def alive(room):
     return [p for p in room['players'] if not p['out'] and not p.get('spectator',False)]
 
@@ -516,14 +530,7 @@ async def websocket(request):
                     if room['mode']=='training':
                         # Desistir termina o treino imediatamente; a entrada fictícia já foi
                         # debitada no início e NUNCA é reembolsada após abandono.
-                        forfeited=(room.get('stake',0) if room['started'] and not room.get('winner') else 0)
-                        ROOMS.pop(room['code'],None)
-                        room['pot_cents']=0
-                        room['pending']=None
-                        for member in room['players']:
-                            member['room']=None
-                            member['hand']=[]
-                            member['media']=False
+                        forfeited=close_training_room(room)
                         emit(ws,'left',training_closed=True,forfeited_cents=forfeited)
                     else:
                         original=room['players']
@@ -560,13 +567,7 @@ async def websocket(request):
                 if r['mode']=='training':
                     # Fechar a aba ou perder o WebSocket também encerra o treino:
                     # diferentemente das salas humanas, não há reconexão a robôs.
-                    ROOMS.pop(r['code'],None)
-                    r['pot_cents']=0
-                    r['pending']=None
-                    for member in r['players']:
-                        member['room']=None
-                        member['hand']=[]
-                        member['media']=False
+                    close_training_room(r)
                 else:
                     sync(r)
                     send_room(r,'media_peer',id=p['id'],ready=False)
