@@ -4,7 +4,7 @@ const COR={red:'VERMELHO',yellow:'AMARELO',green:'VERDE',blue:'AZUL',wild:'CORIN
 const ACAO={skip:'BLOQUEIO',draw2:'+2',reverse:'INVERTER',draw4:'+4',wild:'CORINGA',hidden:'CARTA OCULTA'};
 const dinheiroTeste=centavos=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(centavos||0)/100);
 const nomeCarta=c=>!c?'carta':(ACAO[c.rank]||c.rank)+(c.color&&c.color!=='wild'?' '+(COR[c.color]||''):'');
-const state={id:null,room:null,hand:[],selected:new Set(),ws:null,token:localStorage.getItem('blefe_token'),name:localStorage.getItem('blefe_name')||'',stream:null,pcs:new Map(),remoteStreams:new Map(),micEnabled:true,camEnabled:false,voiceReady:false,volumes:new Map(),selectedColor:'red',claim:null,previewStream:null,lastAnimatedMove:null,mediaConnecting:false,revealTimers:[],victoryShown:null,victoryTimer:null,wallet:{balance_cents:5000,test:{balance_cents:5000},real:{balance_cents:0,enabled:false},history:[],ad_free:false},publicConfig:null,roomPreview:null};
+const state={id:null,room:null,hand:[],selected:new Set(),ws:null,token:localStorage.getItem('blefe_token'),name:localStorage.getItem('blefe_name')||'',stream:null,pcs:new Map(),remoteStreams:new Map(),micEnabled:true,camEnabled:false,voiceReady:false,volumes:new Map(),selectedColor:'red',claim:null,previewStream:null,lastAnimatedMove:null,mediaConnecting:false,revealTimers:[],victoryShown:null,victoryTimer:null,wallet:{balance_cents:5000,test:{balance_cents:5000},real:{balance_cents:0,enabled:false},history:[],ad_free:false},publicConfig:null,roomPreview:null,voiceContext:null,voiceMeters:new Map(),voiceTimer:null};
 $('nickname').value=state.name;
 function toast(s){const el=$('toast');el.textContent=s;el.style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.style.display='none',3500)}
 function send(type,data={}){if(state.ws?.readyState===1)state.ws.send(JSON.stringify({type,...data}));else toast('Servidor desconectado. Reconectando...')}
@@ -29,7 +29,7 @@ $('create').onclick=()=>{
   const amount=Number(raw);
   const balance=state.wallet?.test?.balance_cents??state.wallet?.balance_cents??0;
   if(amount>balance){toast('Seu saldo de teste é menor que o valor escolhido.');return}
-  startNamed('create',{mode:'online',stake:amount});
+  startNamed('create',{mode:'online',stake:amount,visibility:$('roomVisibility').value});
 };
 let previewSequence=0;
 async function previewRoom(code){
@@ -57,6 +57,45 @@ async function previewRoom(code){
     panel.append(title,details,consent);panel.hidden=false;
   }catch(error){if(seq===previewSequence)toast('Não foi possível consultar a sala. Verifique sua conexão.')}
 }
+function closePublicRooms(){
+  $('publicRoomsModal').hidden=true;
+}
+async function openPublicRooms(){
+  if(state.room){toast('Saia da partida antes de procurar outra sala.');return}
+  $('publicRoomsModal').hidden=false;
+  await refreshPublicRooms();
+}
+async function refreshPublicRooms(){
+  const list=$('publicRoomsList');
+  list.textContent='Buscando salas disponíveis...';
+  try{
+    const response=await fetch('/api/salas-publicas',{cache:'no-store'});
+    if(!response.ok)throw new Error('Não foi possível consultar as salas.');
+    const data=await response.json();
+    list.replaceChildren();
+    if(!data.rooms?.length){
+      const msg=document.createElement('div');msg.className='publicRoomsEmpty';
+      msg.textContent='Nenhuma sala pública aberta agora. Crie uma sala pública e convide outras pessoas!';
+      list.append(msg);return;
+    }
+    for(const room of data.rooms){
+      const item=document.createElement('div');item.className='publicRoomItem';
+      const header=document.createElement('strong');header.textContent='Sala '+room.code+' · '+room.host;
+      const sub=document.createElement('p');
+      sub.textContent=room.players+'/4 jogadores • Entrada '+dinheiroTeste(room.stake_cents)+' fictícios';
+      const action=document.createElement('button');action.className='primary';
+      action.textContent='Ver entrada e participar';
+      action.onclick=()=>{
+        closePublicRooms();$('roomcode').value=room.code;
+        previewRoom(room.code);
+      };
+      item.append(header,sub,action);list.append(item);
+    }
+  }catch(e){list.textContent=e.message||'Erro ao buscar salas.'}
+}
+$('publicBrowse').onclick=openPublicRooms;
+$('publicRefresh').onclick=refreshPublicRooms;
+$('publicClose').onclick=closePublicRooms;
 $('join').onclick=()=>previewRoom($('roomcode').value);
 $('roomcode').addEventListener('input',()=>{$('joinPreview').hidden=true;state.roomPreview=null});
 $('startBtn').onclick=()=>send('start');$('leaveBtn').onclick=()=>{if(confirm('Sair da partida?'))send('leave')};
