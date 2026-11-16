@@ -3,7 +3,7 @@ const $=id=>document.getElementById(id);
 const COR={red:'VERMELHO',yellow:'AMARELO',green:'VERDE',blue:'AZUL',wild:'CORINGA'};
 const ACAO={skip:'BLOQUEIO',draw2:'+2',reverse:'INVERTER',draw4:'+4',wild:'CORINGA',hidden:'CARTA OCULTA'};
 const nomeCarta=c=>!c?'carta':(ACAO[c.rank]||c.rank)+(c.color&&c.color!=='wild'?' '+(COR[c.color]||''):'');
-const state={id:null,room:null,hand:[],selected:new Set(),ws:null,token:localStorage.getItem('blefe_token'),name:localStorage.getItem('blefe_name')||'',stream:null,pcs:new Map(),remoteStreams:new Map(),micEnabled:true,camEnabled:false,voiceReady:false,volumes:new Map(),selectedColor:'red',claim:null,previewStream:null,lastAnimatedMove:null,mediaConnecting:false,revealTimers:[]};
+const state={id:null,room:null,hand:[],selected:new Set(),ws:null,token:localStorage.getItem('blefe_token'),name:localStorage.getItem('blefe_name')||'',stream:null,pcs:new Map(),remoteStreams:new Map(),micEnabled:true,camEnabled:false,voiceReady:false,volumes:new Map(),selectedColor:'red',claim:null,previewStream:null,lastAnimatedMove:null,mediaConnecting:false,revealTimers:[],victoryShown:null,victoryTimer:null};
 $('nickname').value=state.name;
 function toast(s){const el=$('toast');el.textContent=s;el.style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.style.display='none',3500)}
 function send(type,data={}){if(state.ws?.readyState===1)state.ws.send(JSON.stringify({type,...data}));else toast('Servidor desconectado. Reconectando...')}
@@ -15,7 +15,7 @@ else if(m.type==='state'){state.room=m.state;state.hand=m.hand||[];state.selecte
 else if(m.type==='notice'){$('logline').textContent=m.message}
 else if(m.type==='error')toast(m.message)
 else if(m.type==='reveal')showReplay(m.result)
-else if(m.type==='left'){state.room=null;state.hand=[];state.selected.clear();$('game').hidden=true;$('lobby').hidden=false;closeMedia()}
+else if(m.type==='left'){state.room=null;state.hand=[];state.selected.clear();clearTimeout(state.victoryTimer);$('victory').hidden=true;state.victoryShown=null;$('game').hidden=true;$('lobby').hidden=false;closeMedia()}
 else if(m.type==='media_peer'){if(m.id!==state.id){if(m.ready&&state.voiceReady&&state.id<m.id){const peer=state.room?.players.find(p=>p.id===m.id);if(peer?.media)await connectPeer(m.id)}else if(!m.ready)removePeer(m.id)}}
 else if(m.type==='signal')await onSignal(m.sender,m.signal)};
 ws.onclose=()=>{if(state.ws!==ws)return;$('connection').textContent='● Desconectado';for(const id of [...state.pcs.keys()])removePeer(id,false);renderPeers();setTimeout(connection,1600)};ws.onerror=()=>{}}
@@ -24,6 +24,12 @@ $('training').onclick=()=>startNamed('create',{mode:'training'});
 $('create').onclick=()=>startNamed('create',{mode:'online'});
 $('join').onclick=()=>startNamed('join',{code:$('roomcode').value.trim().toUpperCase()});
 $('startBtn').onclick=()=>send('start');$('leaveBtn').onclick=()=>{if(confirm('Sair da partida?'))send('leave')};
+$('victoryClose').onclick=()=>{$('victory').hidden=true};
+$('victoryLeave').onclick=()=>{$('victory').hidden=true;send('leave')};
+$('victorySpectate').onclick=()=>{send('spectate');$('victory').hidden=true;toast('Você continuará na sala como espectador.')};
+$('victoryAccept').onclick=()=>send('rematch_accept');
+$('victoryRematch').onclick=()=>send('rematch_propose',{amount:Number($('rematchAmount').value)});
+$('rematchAmount').oninput=()=>{$('rematchAmountLabel').textContent=$('rematchAmount').value+' fichas'};
 $('copyInvite').onclick=async()=>{const link=location.origin+'/?sala='+(state.room?.code||'');try{await navigator.clipboard.writeText(link);toast('Link da sala copiado!')}catch{prompt('Copie o convite:',link)}};
 $('helpBtn').onclick=()=>{$('guide').hidden=false};$('closeGuide').onclick=()=>{$('guide').hidden=true};$('closeReplay').onclick=closeReplay;
 $('play').onclick=()=>{if(!state.selected.size)return;const c=state.hand.find(c=>state.selected.has(c.id));if(!c)return;if(['skip','draw2','reverse','draw4'].includes(c.rank)){state.claim=c.rank;$('claimPanel').hidden=false;$('colors').hidden=c.rank!=='draw4';return}if(c.rank==='wild'){state.claim=null;$('claimPanel').hidden=false;document.querySelector('.claimGrid').hidden=true;$('colors').hidden=false;return}send('play',{cards:[...state.selected]})};
@@ -39,7 +45,7 @@ function makeCard(c){const el=document.createElement('div');el.className='card u
 function render(){const s=state.room;if(!s)return;
 $('lobby').hidden=true;$('game').hidden=false;$('roomLabel').textContent=s.mode==='training'?'TREINAMENTO':'SALA '+s.code;$('waiting').hidden=s.started;
 const me=s.players.find(p=>p.id===state.id),actor=s.players.find(p=>p.id===s.turn),myturn=!!s.started&&!s.winner&&s.turn===state.id,winner=s.players.find(p=>p.id===s.winner);
-$('turnBanner').textContent=winner?'🏆 '+winner.name+' VENCEU!':!s.started?'AGUARDANDO JOGADORES':myturn?'🟡 SUA VEZ DE JOGAR':'⏳ VEZ DE '+(actor?.name?.toUpperCase()||'...');
+$('turnBanner').textContent=winner?'🏆 '+winner.name+' VENCEU!':!s.started?'AGUARDANDO JOGADORES':me?.spectator?'👁 ASSISTINDO À PARTIDA':myturn?'🟡 SUA VEZ DE JOGAR':'⏳ VEZ DE '+(actor?.name?.toUpperCase()||'...');
 $('turnBanner').classList.toggle('myturn',myturn);
 $('strikes').textContent=state.hand.length+' CARTAS';
 $('tableTarget').querySelector('b').textContent=s.pending?('CARTA OCULTA — '+({skip:'BLOQUEIO',draw2:'+2',draw4:'+4',reverse:'INVERTER'})[s.pending.claim]):((s.top?.rank==='hidden'?'CARTA OCULTA':(ACAO[s.top?.rank]||s.top?.rank||'—'))+' • '+(COR[s.color]||'—'));
@@ -54,10 +60,10 @@ $('draw').disabled=!myturn||!!s.pending;
 $('bluff').disabled=!myturn||!state.selected.size||!!s.pending;
 $('play').disabled=!myturn||!state.selected.size||!!s.pending;
 $('play').textContent='JOGAR CARTA';
-$('turnHint').textContent=winner?'Fim da partida. Crie outra sala para revanche.':!s.started?'Aguardando o anfitrião iniciar.':myturn?(s.pending?'Acredite na ação ou duvide da declaração.':'Selecione uma carta, ou compre uma e passe.'):'Aguardando '+(actor?.name||'jogador')+'...';
+$('turnHint').textContent=winner?'Fim da partida. Confira o resultado e negocie a revanche.':!s.started?'Aguardando o anfitrião iniciar.':me?.spectator?'Você está assistindo à partida, sem participar das jogadas.':myturn?(s.pending?'Acredite na ação ou duvide da declaração.':'Selecione uma carta, ou compre uma e passe.'):'Aguardando '+(actor?.name||'jogador')+'...';
 $('waitingTitle').textContent='Sala '+s.code;$('waitingList').textContent=s.players.map(x=>x.name+(x.id===s.host?' ★':'')).join('\\n')+'\\n'+s.players.length+'/4 jogadores';
 $('startBtn').hidden=s.host!==state.id;$('startBtn').disabled=s.players.length<2;
-renderPeers()}
+renderPeers();updateVictory(s)}
 function renderHandOnly(){for(const [i,el] of [...$('hand').children].entries())el.classList.toggle('selected',state.selected.has(state.hand[i].id));$('play').disabled=state.room?.turn!==state.id||!state.selected.size||!!state.room?.pending;$('bluff').disabled=$('play').disabled;$('play').textContent='JOGAR CARTA'}
 function renderPeers(){
   const parent=$('peerCameras'),s=state.room;
@@ -81,6 +87,16 @@ function renderPeers(){
       }else parent.append(box);
     }
     box.classList.toggle('current',!!p&&s.turn===p.id);
+    let countBadge=box.querySelector('.cardsCountBadge');
+    if(!countBadge){
+      countBadge=document.createElement('div');countBadge.className='cardsCountBadge';
+      countBadge.innerHTML='<span class="cardsIcon">▣</span><strong></strong>';
+      box.append(countBadge);
+    }
+    const count=Number(p?.cards??0);
+    countBadge.hidden=!p;
+    countBadge.querySelector('strong').textContent=p?(p.spectator?'ASSISTE':count+' '+(count===1?'CARTA':'CARTAS')):'';
+    countBadge.classList.toggle('isLow',!!p&&!p.spectator&&s.started&&count>0&&count<=2);
     const label=box.querySelector('.tag'),avatar=box.querySelector('.avatar');
     label.textContent=p?(p.id===state.id?'VOCÊ':p.name)+(p.connected?'':' • FORA')+(s.turn===p.id?' • VEZ':''):'AGUARDANDO';
     const stream=p?.id===state.id?state.previewStream:state.remoteStreams.get(p?.id);
@@ -125,6 +141,90 @@ function renderPeers(){
     old?.remove();
   }
 }
+function updateVictory(room){
+  const modal=$('victory');
+  if(!room?.winner){
+    clearTimeout(state.victoryTimer);
+    state.victoryShown=null;
+    modal.hidden=true;
+    return;
+  }
+  const key=room.code+':'+(room.round||1);
+  if(state.victoryShown!==key){
+    state.victoryShown=key;
+    clearTimeout(state.victoryTimer);
+    state.victoryTimer=setTimeout(()=>{
+      if(state.room?.winner&&state.room.code===room.code&&state.room.round===room.round){
+        populateVictory(state.room);
+        modal.hidden=false;
+      }
+    },$('replay').hidden?450:5300);
+  }
+  if(!modal.hidden)populateVictory(room);
+}
+function populateVictory(room){
+  const me=room.players.find(p=>p.id===state.id);
+  const winner=room.players.find(p=>p.id===room.winner);
+  if(!winner)return;
+  const won=room.winner===state.id;
+  const modal=$('victory');
+  modal.classList.toggle('lost',!won);
+  $('victoryEmblem').textContent=won?'🏆':'🥈';
+  $('victoryEyebrow').textContent=won?'PARABÉNS!':'PARTIDA ENCERRADA';
+  $('victoryTitle').textContent=won?'VOCÊ VENCEU!':winner.name+' VENCEU!';
+  $('victoryMessage').textContent=won?'Você descartou suas cartas e ganhou esta partida!':'O vencedor foi '+winner.name+'. Prepare uma revanche ou assista aos próximos jogadores.';
+  const list=$('victoryPlayers');
+  list.replaceChildren();
+  const people=[...room.players].filter(p=>!p.spectator);
+  people.sort((a,b)=>(a.id===room.winner?-1:b.id===room.winner?1:a.cards-b.cards));
+  people.forEach((p,i)=>{
+    const line=document.createElement('div');line.className='victoryPlayer'+(p.id===room.winner?' winner':'');
+    const place=document.createElement('span');place.className='place';place.textContent=p.id===room.winner?'🏆':String(i+1)+'º';
+    const name=document.createElement('span');name.className='playerName';name.textContent=p.name+(p.id===state.id?' (você)':'');
+    const count=document.createElement('span');count.className='playerCards';count.textContent=p.cards+' '+(p.cards===1?'carta':'cartas');
+    line.append(place,name,count);list.append(line);
+  });
+  const firstTime=modal.hidden&&!modal.dataset.celebrated;
+  if(firstTime&&won&&window.matchMedia('(prefers-reduced-motion: no-preference)').matches){
+    const pieces=$('victoryConfetti');pieces.replaceChildren();
+    const palette=['#f4c75b','#66e2b4','#c480f4','#ff7680','#8dc9ff','#fff1c7'];
+    for(let i=0;i<32;i++){
+      const dot=document.createElement('span');
+      dot.style.left=(3+(i*71%94))+'%';
+      dot.style.setProperty('--confetti',palette[i%palette.length]);
+      dot.style.setProperty('--delay',(i%9)*.09+'s');
+      dot.style.setProperty('--duration',(2.8+(i%5)*.36)+'s');
+      dot.style.setProperty('--sway',((i%2?-1:1)*(12+(i*7%50)))+'px');
+      pieces.append(dot);
+    }
+  }
+  if(room.round!==Number(modal.dataset.round||0)){
+    modal.dataset.celebrated='';
+    modal.dataset.round=String(room.round||1);
+  }
+  const observer=!!me?.spectator;
+  const hosting=room.host===state.id&&!observer;
+  const offer=room.proposal;
+  $('rematchHostControls').hidden=!hosting;
+  $('rematchProposal').hidden=!offer;
+  $('victoryWaiting').hidden=!!offer||hosting||observer;
+  $('victoryWaiting').textContent=observer?'Você está assistindo. Aguarde a próxima rodada.':'Aguardando o anfitrião propor a revanche.';
+  $('victorySpectate').hidden=observer;
+  $('victoryAccept').hidden=observer||!offer||offer.accepted.includes(state.id);
+  if(offer){
+    $('rematchProposedValue').textContent='Proposta: '+offer.amount+' '+(offer.amount===1?'ficha virtual':'fichas virtuais')+' por participante';
+    const acceptance=$('rematchAcceptance');acceptance.replaceChildren();
+    room.players.filter(p=>!p.spectator).forEach(p=>{
+      const label=document.createElement('div');label.className='rematchVote';
+      const ok=offer.accepted.includes(p.id);
+      label.textContent=(ok?'✓ ':'… ')+p.name+(ok?' — aceitou':' — aguardando');
+      label.classList.toggle('accepted',ok);
+      acceptance.append(label);
+    });
+  }
+  $('victoryRematch').textContent=offer?'Alterar proposta de revanche':'Propor revanche';
+}
+
 function closeReplay(){for(const t of state.revealTimers)clearTimeout(t);state.revealTimers=[];$('replay').hidden=true}
 function showReplay(r){
   closeReplay();
