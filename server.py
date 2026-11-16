@@ -79,6 +79,7 @@ def info(room):
     'players':[{'id':p['id'],'name':p['name'],'bot':p['bot'],'connected':p.get('ws') is not None and not p['ws'].closed if p.get('ws') else p['bot'],'cards':len(p['hand']),'strikes':0,'out':p['out'],'spectator':p.get('spectator',False),'media':p.get('media',False)} for p in room['players']],
     'turn':room['turn'],'color':room['color'],'top':({'rank':'hidden','color':room['color']} if room.get('hidden_top') else room['top']),'direction':room['direction'],
     'pending':{'player':pending['player'],'claim':pending['claim'],'color':pending['color']} if pending else None,
+    'draw_stack':room.get('draw_stack',0),'stack_count':room.get('stack_count',0),
     'last':room['last'],'winner':room.get('winner'),'deck_count':len(room['deck']), 'move':room.get('move'),'round':room.get('round',0),'stake':room.get('stake',0),'pot_cents':room.get('pot_cents',0),'wallet_type':room.get('wallet_type','test'),'proposal':room.get('proposal')}
 
 def sync(room):
@@ -92,7 +93,7 @@ def notice(room,msg):
 def make_room(player, mode, stake=0):
     code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
     while code in ROOMS: code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
-    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'hidden_top':False,'pending':None,'last':None,'move':None,'move_serial':0,'round':0,'stake':stake,'pot_cents':0,'wallet_type':'test','proposal':None,'winner':None,'created':time.time()}
+    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'hidden_top':False,'pending':None,'draw_stack':0,'stack_count':0,'last':None,'move':None,'move_serial':0,'round':0,'stake':stake,'pot_cents':0,'wallet_type':'test','proposal':None,'winner':None,'created':time.time()}
     ROOMS[code]=room
     player['room']=code
     return room
@@ -146,7 +147,7 @@ def start(room):
     i=next(i for i,c in enumerate(room['deck']) if c['rank'].isdigit())
     card=room['deck'].pop(i)
     room.update(started=True,turn=random.choice(eligible(room))['id'],color=card['color'],
-        top=card,discard=[card],pending=None,direction=1,hidden_top=False,last=None,move=None,move_serial=0,winner=None,proposal=None)
+        top=card,discard=[card],pending=None,direction=1,hidden_top=False,draw_stack=0,stack_count=0,last=None,move=None,move_serial=0,winner=None,proposal=None)
     sync(room);notice(room,'Descarte por cor ou número; ações ficam ocultas e podem ser blefes!')
     bots_schedule(room)
     return True
@@ -165,42 +166,77 @@ def finalize(room,p):
     return False
 
 def apply_action(room,actor,kind,newcolor):
+    """Resolve skip/reverse once the next player accepts the face-down claim."""
     target=advance(room,actor['id'])
-    if kind in ('draw2','draw4'):
-        n=2 if kind=='draw2' else 4
-        draw(room,target,n)
-        notice(room,f"{target['name']} comprou {n} cartas.")
-    if kind=='reverse':room['direction']*=-1
-    if kind in ('skip','draw2','draw4'):target=advance(room,target['id'])
+    if kind=='reverse':
+        room['direction']*=-1
+        target=advance(room,actor['id'])
+    if kind=='skip':target=advance(room,target['id'])
     room['color']=newcolor
     room['hidden_top']=True
     room['turn']=target['id']
     finalize(room,actor)
     sync(room);bots_schedule(room)
 
+def reset_stack(room):
+    room['draw_stack']=0
+    room['stack_count']=0
+
+def pending_truth(room,q):
+    card=q['card']
+    # On a stack the original color restriction is lifted for declared draw cards.
+    return card['rank']==q['claim'] and (
+        q.get('stacked',False) or card['color']==q.get('before_color') or card['color']=='wild')
+
 def play(room,p,ids,claim=None,newcolor=None):
-    if p.get('spectator',False) or room['winner'] or room['turn']!=p['id']:return 'Não é sua vez.'
-    if room['pending']:return 'Primeiro, aceite ou duvide da carta oculta.'
-    if not isinstance(ids,list) or len(ids)!=1:return 'Selecione somente uma carta.'
+    if p.get('spectator',False) or room['winner'] or room['turn']!=p['id']:
+        return 'Não é sua vez.'
+    previous=room['pending']
+    if previous and previous['claim'] not in ('draw2','draw4'):
+        return 'Você precisa aceitar ou duvidar dessa carta de ação.'
+    if previous and claim not in ('draw2','draw4'):
+        return 'Há uma pilha de compras: empilhe +2 ou +4, duvide ou aceite.'
+    if not isinstance(ids,list) or len(ids)!=1:
+        return 'Selecione somente uma carta.'
     card=next((c for c in p['hand'] if c['id']==ids[0]),None)
     if not card:return 'Carta inválida.'
     if claim is not None:
         if claim not in ACTIONS:return 'Declaração inválida.'
+        if previous and claim not in ('draw2','draw4'):
+            return 'Só é permitido empilhar +2 ou +4.'
         if claim=='draw4':
             if newcolor not in COLORS:return 'Escolha uma cor para o +4.'
             targetcolor=newcolor
-        else:targetcolor=room['color']
+        else:
+            targetcolor=room['color']
+        before_color=room['color']
+        if previous:
+            # The older hidden card stays in the discard pile without being revealed.
+            room['discard'].append(previous['card'])
+            room['top']=previous['card']
+            room['hidden_top']=True
         p['hand'].remove(card)
-        room['pending']={'player':p['id'],'card':card,'claim':claim,'color':targetcolor}
+        room['pending']={'player':p['id'],'card':card,'claim':claim,'color':targetcolor,
+                         'before_color':before_color,'stacked':bool(previous)}
+        if claim in ('draw2','draw4'):
+            room['draw_stack']+=2 if claim=='draw2' else 4
+            room['stack_count']+=1
         room['turn']=advance(room,p['id'])['id']
         room['last']=None
         room['move_serial']+=1
-        room['move']={'id':room['move_serial'],'player':p['id'],'name':p['name'],'hidden':True,'claim':claim}
-        notice(room,p['name']+' declarou '+LABEL[claim]+' com a carta virada para baixo.')
+        room['move']={'id':room['move_serial'],'player':p['id'],'name':p['name'],
+                      'hidden':True,'claim':claim,'stack_total':room['draw_stack']}
+        if claim in ('draw2','draw4'):
+            notice(room,f"{p['name']} declarou {LABEL[claim]} com carta virada para baixo. "
+                        f"Pilha: +{room['draw_stack']}.")
+        else:
+            notice(room,p['name']+' declarou '+LABEL[claim]+' com carta virada para baixo.')
         sync(room);bots_schedule(room)
         return None
-    if card['rank'] in ACTIONS:return 'Cartas de ação precisam de declaração oculta.'
-    if card['color']!='wild' and card['color']!=room['color'] and (room.get('hidden_top') or card['rank']!=room['top']['rank']):
+    if card['rank'] in ACTIONS:
+        return 'Cartas de ação precisam de declaração oculta.'
+    if card['color']!='wild' and card['color']!=room['color'] and (
+        room.get('hidden_top') or card['rank']!=room['top']['rank']):
         return 'A carta deve corresponder à cor ou ao número.'
     if card['color']=='wild' and newcolor not in COLORS:return 'Escolha uma cor.'
     p['hand'].remove(card);room['discard'].append(card);room['top']=card
@@ -208,46 +244,66 @@ def play(room,p,ids,claim=None,newcolor=None):
     room['turn']=advance(room,p['id'])['id']
     room['last']=None
     room['move_serial']+=1
-    room['move']={'id':room['move_serial'],'player':p['id'],'name':p['name'],'hidden':False,'card':card}
+    room['move']={'id':room['move_serial'],'player':p['id'],'name':p['name'],
+                  'hidden':False,'card':card}
     notice(room,p['name']+' jogou '+card['rank']+'.')
     finalize(room,p);sync(room);bots_schedule(room)
     return None
 
 def resolve(room,p,doubt):
     q=room['pending']
-    if not q or p.get('spectator',False) or room['turn']!=p['id'] or room['winner']:return 'Não há blefe pendente para você.'
+    if not q or p.get('spectator',False) or room['turn']!=p['id'] or room['winner']:
+        return 'Não há carta oculta pendente para você.'
     actor=player_by_id(room,q['player'])
     actual=q['card'];claim=q['claim']
-    truthful=(actual['rank']==claim and (actual['color']==room['color'] or actual['color']=='wild'))
+    truthful=pending_truth(room,q)
+    stack_total=room.get('draw_stack',0)
+    count=room.get('stack_count',0)
     room['pending']=None
-    room['discard'].append(actual);room['top']=actual;room['hidden_top']=False
+    room['discard'].append(actual);room['top']=actual
     room['last']={'accuser':p['name'],'accused':actor['name'],'lie':not truthful,
-        'cards':[actual],'loser':actor['name'] if not truthful else p['name'],'out':False,
-        'claim':claim,'accepted':not doubt,'penalty':0}
+                  'cards':[actual],'loser':actor['name'] if not truthful else p['name'],
+                  'out':False,'claim':claim,'accepted':not doubt,'penalty':0,
+                  'stack_total':stack_total,'stack_count':count}
     if doubt:
         if truthful:
-            n=(2 if claim=='draw2' else 4 if claim=='draw4' else 0)+1
+            # Wrong challenge pays all accumulated draw cards plus one extra.
+            n=stack_total+1 if stack_total else 1
             draw(room,p,n)
             room['last']['penalty']=n
-            notice(room,p['name']+f' duvidou errado e comprou {n} carta(s).')
+            notice(room,p['name']+f' duvidou errado e comprou {n} cartas.')
             if claim=='reverse':room['direction']*=-1
-            room['color']=q['color'];room['turn']=advance(room,p['id'])['id']
+            room['color']=q['color']
+            room['turn']=advance(room,p['id'])['id']
+            room['hidden_top']=True
+            reset_stack(room)
             finalize(room,actor)
         else:
+            # Caught lie cancels the whole pile; only the last claimant draws two.
             draw(room,actor,2)
             room['last']['penalty']=2
             room['turn']=p['id']
-            notice(room,actor['name']+' foi pego blefando e comprou 2 cartas!')
+            room['hidden_top']=False
+            reset_stack(room)
+            notice(room,actor['name']+' blefou e comprou 2 cartas. Pilha cancelada!')
         send_room(room,'reveal',result=room['last'])
         sync(room);bots_schedule(room)
         return None
-    if truthful:
-        notice(room,p['name']+' aceitou '+LABEL[claim]+'.')
-        apply_action(room,actor,claim,q['color'])
-    else:
-        # Undetected bluff: declared action takes effect.
-        notice(room,p['name']+' acreditou no blefe.')
-        apply_action(room,actor,claim,q['color'])
+    if claim in ('draw2','draw4'):
+        n=stack_total
+        draw(room,p,n)
+        reset_stack(room)
+        room['color']=q['color']
+        room['hidden_top']=True
+        room['turn']=advance(room,p['id'])['id']
+        room['last']['penalty']=n
+        notice(room,p['name']+f' aceitou a pilha e comprou {n} cartas de teste.')
+        finalize(room,actor)
+        sync(room);bots_schedule(room)
+        return None
+    reset_stack(room)
+    notice(room,p['name']+' aceitou '+LABEL[claim]+'.')
+    apply_action(room,actor,claim,q['color'])
     return None
 
 def draw_turn(room,p):
