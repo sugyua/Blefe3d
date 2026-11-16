@@ -106,11 +106,38 @@ async function loadPublicConfig(){
 updateWalletUI();
 
 $('helpBtn').onclick=()=>{$('guide').hidden=false};$('closeGuide').onclick=()=>{$('guide').hidden=true};$('closeReplay').onclick=closeReplay;
-$('play').onclick=()=>{if(!state.selected.size)return;const c=state.hand.find(c=>state.selected.has(c.id));if(!c)return;if(['skip','draw2','reverse','draw4'].includes(c.rank)){state.claim=c.rank;$('claimPanel').hidden=false;$('colors').hidden=c.rank!=='draw4';return}if(c.rank==='wild'){state.claim=null;$('claimPanel').hidden=false;document.querySelector('.claimGrid').hidden=true;$('colors').hidden=false;return}send('play',{cards:[...state.selected]})};
+function openDeclaration(stack=false,chosen=null){
+  state.claim=chosen;
+  const grid=document.querySelector('#claimPanel .claimGrid');
+  grid.hidden=chosen==='wild';
+  for(const button of document.querySelectorAll('[data-claim]')){
+    button.hidden=stack&&button.dataset.claim!=='draw2'&&button.dataset.claim!=='draw4';
+  }
+  $('colors').hidden=chosen!=='draw4'&&chosen!=='wild';
+  $('claimPanel').hidden=false;
+}
+$('play').onclick=()=>{
+  if(!state.selected.size)return;
+  const c=state.hand.find(c=>state.selected.has(c.id));
+  if(!c)return;
+  const stack=!!state.room?.pending&&state.room?.draw_stack>0;
+  if(stack){
+    if(c.rank==='draw2'){send('play',{cards:[...state.selected],claim:'draw2'});return}
+    if(c.rank==='draw4'){openDeclaration(true,'draw4');return}
+    toast('Para empilhar outra carta, use BLEFAR PILHA.');return;
+  }
+  if(['skip','draw2','reverse','draw4'].includes(c.rank)){
+    if(c.rank==='draw4')openDeclaration(false,'draw4');
+    else send('play',{cards:[...state.selected],claim:c.rank});
+    return;
+  }
+  if(c.rank==='wild'){openDeclaration(false,'wild');return}
+  send('play',{cards:[...state.selected]});
+};
 $('challenge').onclick=()=>send('challenge');
 $('accept').onclick=()=>send('accept');
 $('draw').onclick=()=>send('draw');
-$('bluff').onclick=()=>{if(!state.selected.size)return;state.claim=null;document.querySelector('.claimGrid').hidden=false;$('colors').hidden=true;$('claimPanel').hidden=false};
+$('bluff').onclick=()=>{if(!state.selected.size)return;openDeclaration(!!state.room?.draw_stack,null)};
 function inviteMessage(room){
   const url=new URL(location.pathname,location.origin);
   url.searchParams.set('sala',room.code);
@@ -142,8 +169,8 @@ $('copyInvite').onclick=async()=>{
   try{await navigator.clipboard.writeText(message);toast('Convite com código e valor copiado!')}
   catch(error){window.prompt('Copie e envie o convite:',message)}
 };
-$('cancelClaim').onclick=()=>{$('claimPanel').hidden=true};
-for(const el of document.querySelectorAll('[data-color]')){el.onclick=()=>{state.selectedColor=el.dataset.color;for(const b of document.querySelectorAll('[data-color]'))b.style.outline=b===el?'3px solid white':'';if(state.claim||document.querySelector('.claimGrid').hidden){send('play',{cards:[...state.selected],claim:state.claim,color:state.selectedColor});$('claimPanel').hidden=true;state.claim=null;document.querySelector('.claimGrid').hidden=false}}}
+$('cancelClaim').onclick=()=>{$('claimPanel').hidden=true;state.claim=null;document.querySelector('#claimPanel .claimGrid').hidden=false};
+for(const el of document.querySelectorAll('[data-color]')){el.onclick=()=>{state.selectedColor=el.dataset.color;for(const b of document.querySelectorAll('[data-color]'))b.style.outline=b===el?'3px solid white':'';if(state.claim||document.querySelector('#claimPanel .claimGrid').hidden){send('play',{cards:[...state.selected],claim:state.claim,color:state.selectedColor});$('claimPanel').hidden=true;state.claim=null;document.querySelector('#claimPanel .claimGrid').hidden=false}}}
 for(const el of document.querySelectorAll('[data-claim]')){el.onclick=()=>{state.claim=el.dataset.claim;if(state.claim==='draw4'){$('colors').hidden=false;toast('Selecione a cor do +4.')}else{send('play',{cards:[...state.selected],claim:state.claim,color:state.selectedColor});$('claimPanel').hidden=true;state.claim=null}}};
 function makeCard(c){const el=document.createElement('div');el.className='card uno '+(c.color||'wild');const b=document.createElement('b');b.textContent=({skip:'⊘',draw2:'+2',draw4:'+4',reverse:'⇄',wild:'★'})[c.rank]||c.rank;el.append(b);return el}
 function render(){const s=state.room;if(!s)return;
@@ -152,23 +179,44 @@ const me=s.players.find(p=>p.id===state.id),actor=s.players.find(p=>p.id===s.tur
 $('turnBanner').textContent=winner?'🏆 '+winner.name+' VENCEU!':!s.started?'AGUARDANDO JOGADORES':me?.spectator?'👁 ASSISTINDO À PARTIDA':myturn?'🟡 SUA VEZ DE JOGAR':'⏳ VEZ DE '+(actor?.name?.toUpperCase()||'...');
 $('turnBanner').classList.toggle('myturn',myturn);
 $('strikes').textContent=state.hand.length+' CARTAS';
-$('tableTarget').querySelector('b').textContent=s.pending?('CARTA OCULTA — '+({skip:'BLOQUEIO',draw2:'+2',draw4:'+4',reverse:'INVERTER'})[s.pending.claim]):((s.top?.rank==='hidden'?'CARTA OCULTA':(ACAO[s.top?.rank]||s.top?.rank||'—'))+' • '+(COR[s.color]||'—'));
+$('tableTarget').querySelector('b').textContent=s.draw_stack>0?('PILHA +'+s.draw_stack+' • '+s.stack_count+' '+(s.stack_count===1?'CARTA':'CARTAS')):s.pending?('CARTA OCULTA — '+(ACAO[s.pending.claim]||s.pending.claim)):((s.top?.rank==='hidden'?'CARTA OCULTA':(ACAO[s.top?.rank]||s.top?.rank||'—'))+' • '+(COR[s.color]||'—'));
 $('tableCards').replaceChildren();
-if(s.pending||s.top?.rank==='hidden'){const back=document.createElement('div');back.className='tableBack';back.setAttribute('aria-label','Carta virada para baixo');$('tableCards').append(back)}
-else if(s.top)$('tableCards').append(makeCard(s.top));
+if(s.pending||s.top?.rank==='hidden'){
+  for(let i=0;i<Math.max(1,Math.min(6,s.stack_count||1));i++){
+    const back=document.createElement('div');back.className='tableBack'+(s.draw_stack?' stackedBack':'');
+    back.style.transform='rotate('+(-10+i*4)+'deg) translateY('+(-i*1.5)+'px)';
+    back.setAttribute('aria-label','Carta virada para baixo');
+    $('tableCards').append(back);
+  }
+}else if(s.top)$('tableCards').append(makeCard(s.top));
 $('hand').replaceChildren();
-for(const c of state.hand){const el=makeCard(c);el.classList.toggle('selected',state.selected.has(c.id));el.onclick=()=>{if(!myturn||s.pending)return;if(state.selected.has(c.id))state.selected.delete(c.id);else{state.selected.clear();state.selected.add(c.id)}renderHandOnly()};$('hand').append(el)}
+for(const c of state.hand){const el=makeCard(c);el.classList.toggle('selected',state.selected.has(c.id));el.onclick=()=>{if(!myturn||(s.pending&&!s.draw_stack))return;if(state.selected.has(c.id))state.selected.delete(c.id);else{state.selected.clear();state.selected.add(c.id)}renderHandOnly()};$('hand').append(el)}
 $('challenge').disabled=!myturn||!s.pending;
+$('challenge').textContent=s.draw_stack?'DUVIDAR':'DESCONFIAR';
 $('accept').disabled=!myturn||!s.pending;
+$('accept').textContent=s.draw_stack?'COMPRAR +'+s.draw_stack:'ACREDITAR';
 $('draw').disabled=!myturn||!!s.pending;
-$('bluff').disabled=!myturn||!state.selected.size||!!s.pending;
-$('play').disabled=!myturn||!state.selected.size||!!s.pending;
-$('play').textContent='JOGAR CARTA';
-$('turnHint').textContent=winner?'Fim da partida. Confira o resultado e negocie a revanche.':!s.started?'Aguardando o anfitrião iniciar.':me?.spectator?'Você está assistindo à partida, sem participar das jogadas.':myturn?(s.pending?'Acredite na ação ou duvide da declaração.':'Selecione uma carta, ou compre uma e passe.'):'Aguardando '+(actor?.name||'jogador')+'...';
-$('waitingTitle').textContent='Sala '+s.code;$('waitingList').textContent=s.players.map(x=>x.name+(x.id===s.host?' ★':'')).join('\\n')+'\\n'+s.players.length+'/4 jogadores';
+$('bluff').disabled=!myturn||!state.selected.size||(!!s.pending&&!s.draw_stack);
+$('bluff').textContent=s.draw_stack?'BLEFAR PILHA':'BLEFAR';
+const selected=state.hand.find(c=>state.selected.has(c.id));
+$('play').disabled=!myturn||!state.selected.size||(!!s.pending&&!s.draw_stack)||(!!s.draw_stack&&selected&&!['draw2','draw4'].includes(selected.rank));
+$('play').textContent=s.draw_stack?'EMPILHAR':'JOGAR CARTA';
+$('turnHint').textContent=winner?'Fim da partida. Confira o resultado e negocie a revanche.':!s.started?'Aguardando o anfitrião iniciar.':me?.spectator?'Você está assistindo à partida.':myturn?(s.draw_stack?'Pilha +'+s.draw_stack+': empilhe +2/+4, duvide ou compre todas.':s.pending?'Acredite ou duvide da carta oculta.':'Selecione uma carta ou compre uma e passe.'):'Aguardando '+(actor?.name||'jogador')+(s.draw_stack?' resolver a pilha +'+s.draw_stack:'')+'...';
+$('waitingTitle').textContent='Sala '+s.code;
+$('waitingList').textContent=s.players.map(x=>x.name+(x.id===s.host?' (anfitrião)':'')).join('\n')+'\n'+s.players.length+'/4 jogadores';
+updateInvitation(s);
 $('startBtn').hidden=s.host!==state.id;$('startBtn').disabled=s.players.length<2;
 renderPeers();updateVictory(s)}
-function renderHandOnly(){for(const [i,el] of [...$('hand').children].entries())el.classList.toggle('selected',state.selected.has(state.hand[i].id));$('play').disabled=state.room?.turn!==state.id||!state.selected.size||!!state.room?.pending;$('bluff').disabled=$('play').disabled;$('play').textContent='JOGAR CARTA'}
+function renderHandOnly(){
+  const s=state.room;
+  const myTurn=!!s&&s.turn===state.id&&!s.winner;
+  const card=state.hand.find(c=>state.selected.has(c.id));
+  for(const [i,el] of [...$('hand').children].entries())el.classList.toggle('selected',state.selected.has(state.hand[i].id));
+  const actionPending=!!s?.pending&&!s?.draw_stack;
+  $('play').disabled=!myTurn||!card||actionPending||(!!s?.draw_stack&&!['draw2','draw4'].includes(card.rank));
+  $('bluff').disabled=!myTurn||!card||actionPending;
+  $('play').textContent=s?.draw_stack?'EMPILHAR':'JOGAR CARTA';
+}
 function renderPeers(){
   const parent=$('peerCameras'),s=state.room;
   if(!s)return;
