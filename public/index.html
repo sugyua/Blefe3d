@@ -1,12 +1,33 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#111827"><title>Blefe Color — Testes</title><link rel="stylesheet" href="/static/style.css?v=20261116w05"></head><body>
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#111827"><title>Blefe Color — Testes</title><link rel="stylesheet" href="/static/style.css?v=20261116w06"></head><body>
 <div id="app">
- <section id="lobby" class="overlay"><div class="welcome"><div class="brand">♠ BLEFE <span>COLOR</span></div><p>Jogue, desconfie e descubra quem está mentindo.</p><div class="lobbyBalance"><span>SEU SALDO DE TESTE</span><strong id="lobbyBalance">R$ 50,00</strong><small>Dinheiro fictício, sem valor real</small></div><div class="lobbyTools"><button id="openWallet">Carteira</button><button id="openDonation">Apoiar via Pix</button></div><label>Seu nome<input id="nickname" maxlength="20" placeholder="Nome do jogador"></label><div class="stack"><button id="training" class="primary">Treinar com 3 adversários virtuais</button><button id="create">Criar sala privada</button><div class="join"><input id="roomcode" maxlength="6" placeholder="CÓDIGO DA SALA"><button id="join">Entrar</button></div></div><small>Versão 0.5 • Testes • Sem dinheiro real</small></div></section>
+ <section id="lobby" class="overlay"><div class="welcome"><div class="brand">♠ BLEFE <span>COLOR</span></div><p>Jogue, desconfie e descubra quem está mentindo.</p><div class="lobbyBalance"><span>SEU SALDO DE TESTE</span><strong id="lobbyBalance">R$ 50,00</strong><small>Dinheiro fictício, sem valor real</small></div><div class="lobbyTools"><button id="openWallet">Carteira</button><button id="openDonation">Apoiar via Pix</button></div><label>Seu nome<input id="nickname" maxlength="20" placeholder="Nome do jogador"></label><div class="stack"><button id="training" class="primary">Treinar com 3 adversários virtuais</button>
+<div class="createStakeField">
+  <label for="createStake">Entrada por jogador na sala (saldo de teste)</label>
+  <select id="createStake" required>
+    <option value="" selected>Selecione o valor para criar a sala</option>
+    <option value="0">Grátis — R$ 0,00</option>
+    <option value="500">R$ 5,00 de teste</option>
+    <option value="1000">R$ 10,00 de teste</option>
+    <option value="1500">R$ 15,00 de teste</option>
+    <option value="2000">R$ 20,00 de teste</option>
+    <option value="2500">R$ 25,00 de teste</option>
+    <option value="3000">R$ 30,00 de teste</option>
+    <option value="3500">R$ 35,00 de teste</option>
+    <option value="4000">R$ 40,00 de teste</option>
+    <option value="4500">R$ 45,00 de teste</option>
+    <option value="5000">R$ 50,00 de teste</option>
+  </select>
+  <small>A entrada será descontada somente quando a partida começar. Sem dinheiro real.</small>
+</div>
+<button id="create">Criar sala privada</button>
+<div class="join"><input id="roomcode" maxlength="6" placeholder="CÓDIGO DA SALA" autocapitalize="characters"><button id="join">Entrar</button></div>
+<div id="joinPreview" class="joinPreview" aria-live="polite" hidden></div></div><small>Versão 0.6 • Testes • Sem dinheiro real</small></div></section>
  <section id="game" hidden>
   <header><div><strong>BLEFE COLOR</strong><small id="roomLabel"></small></div><div class="headActions"><button id="gameWallet" class="gameWallet" title="Consultar carteira">R$ 50,00</button><span id="connection">● Conectando</span><button id="helpBtn" title="Regras">?</button><button id="leaveBtn" title="Sair">✕</button></div></header>
   <div id="topArea"><div id="turnBanner">Aguardando jogadores...</div><div id="peerCameras" class="peerCameras"></div><div class="mediaButtons"><button id="voiceBtn">🎙 Ativar voz</button><button id="camBtn">📷 Câmera</button><button id="micBtn" disabled>🔊 Microfone ligado</button></div></div>
   <div id="boardWrap"><div class="table3d"><div class="tableEdge"><div id="tableCards" class="tableCards"></div><div id="tableTarget">CARTA DA MESA: <b>—</b></div></div></div><div id="logline">Bem-vindo à mesa.</div></div>
   <div id="bottomArea"><div class="handHeader"><b>SUAS CARTAS</b><span id="strikes">7 cartas</span></div><div id="hand"></div><div id="actions"><button id="challenge" class="danger" disabled>DESCONFIAR</button><button id="accept" disabled>ACREDITAR</button><button id="draw" disabled>COMPRAR 1</button><button id="bluff" disabled>BLEFAR</button><button id="play" class="primary" disabled>JOGAR</button></div><div id="turnHint">Aguardando início da partida.</div></div>
-  <div id="waiting" class="waiting" hidden><b id="waitingTitle">Sala privada</b><p id="waitingList"></p><button id="copyInvite">Copiar convite</button><button id="whatsappInvite" class="primary">Compartilhar no WhatsApp</button><button id="startBtn" class="primary">Iniciar partida</button></div>
+  <div id="waiting" class="waiting" hidden><b id="waitingTitle">Sala privada</b><p id="waitingList"></p><div id="waitingStake" class="waitingStake"></div><button id="copyInvite">Copiar convite</button><a id="whatsappInvite" class="primary whatsappLink" href="https://wa.me/" target="_blank" rel="noopener noreferrer">Compartilhar no WhatsApp</a><button id="startBtn" class="primary">Iniciar partida</button></div>
  </section>
  <div id="claimPanel" class="modal" hidden><div class="modalInner"><h2>O que você declara?</h2><p>A carta será colocada virada para baixo. Os outros só ouvirão sua declaração.</p><div class="claimGrid"><button data-claim="skip">BLOQUEIO</button><button data-claim="draw2">+2</button><button data-claim="draw4">+4</button><button data-claim="reverse">INVERTER</button></div><p>Cor escolhida para o +4 / curinga:</p><div id="colors" class="claimGrid"><button data-color="red">🔴</button><button data-color="yellow">🟡</button><button data-color="green">🟢</button><button data-color="blue">🔵</button></div><button id="cancelClaim">Cancelar</button></div></div><div id="walletModal" class="modal" hidden><div class="modalInner moneyModal"><div class="moneyEyebrow">CARTEIRA VIRTUAL</div><h2>Seu saldo de teste</h2><div class="walletTypeGrid">
   <div class="walletType testWallet"><span>SALDO DE TESTE</span><strong id="walletBigBalance">R$ 50,00</strong><small>Disponível somente em partidas de teste</small></div>
