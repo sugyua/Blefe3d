@@ -11,13 +11,23 @@ DONATION_PIX_KEY = os.getenv('DONATION_PIX_KEY','').strip()
 DONATION_PIX_OWNER = os.getenv('DONATION_PIX_OWNER','').strip()
 
 def wallet_public(player):
-    return {'balance_cents':player.get('balance_cents',TEST_START_BALANCE_CENTS),
-            'ad_free':player.get('ad_free',False),'history':player.get('wallet_history',[])[-12:]}
+    """Never combine simulated credits and real-money fields."""
+    test_balance=player.get('balance_cents',TEST_START_BALANCE_CENTS)
+    return {
+        'balance_cents':test_balance,  # Backward-compatible, always simulated.
+        'test':{'balance_cents':test_balance,'currency':'BRL_TEST','withdrawable':False,
+                'history':player.get('wallet_history',[])[-12:]},
+        'real':{'balance_cents':0,'currency':'BRL','enabled':False,'withdrawable':False},
+        'real_money_enabled':False,
+        'ad_free':player.get('ad_free',False),
+        'history':player.get('wallet_history',[])[-12:]}
 
 def send_wallet(player):
     if not player.get('bot'):emit(player.get('ws'),'wallet',wallet=wallet_public(player))
 
-def wallet_change(player,delta,description):
+def wallet_change(player,delta,description,wallet_type='test'):
+    if wallet_type!='test':
+        raise ValueError('Carteira real indisponível; saldos nunca podem ser misturados.')
     player['balance_cents']=player.get('balance_cents',TEST_START_BALANCE_CENTS)+delta
     player.setdefault('wallet_history',[]).append(
         {'amount_cents':delta,'description':description,'at':int(time.time())})
@@ -69,7 +79,7 @@ def info(room):
     'players':[{'id':p['id'],'name':p['name'],'bot':p['bot'],'connected':p.get('ws') is not None and not p['ws'].closed if p.get('ws') else p['bot'],'cards':len(p['hand']),'strikes':0,'out':p['out'],'spectator':p.get('spectator',False),'media':p.get('media',False)} for p in room['players']],
     'turn':room['turn'],'color':room['color'],'top':({'rank':'hidden','color':room['color']} if room.get('hidden_top') else room['top']),'direction':room['direction'],
     'pending':{'player':pending['player'],'claim':pending['claim'],'color':pending['color']} if pending else None,
-    'last':room['last'],'winner':room.get('winner'),'deck_count':len(room['deck']), 'move':room.get('move'),'round':room.get('round',0),'stake':room.get('stake',0),'pot_cents':room.get('pot_cents',0),'proposal':room.get('proposal')}
+    'last':room['last'],'winner':room.get('winner'),'deck_count':len(room['deck']), 'move':room.get('move'),'round':room.get('round',0),'stake':room.get('stake',0),'pot_cents':room.get('pot_cents',0),'wallet_type':room.get('wallet_type','test'),'proposal':room.get('proposal')}
 
 def sync(room):
     payload=info(room)
@@ -82,7 +92,7 @@ def notice(room,msg):
 def make_room(player, mode):
     code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
     while code in ROOMS: code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
-    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'hidden_top':False,'pending':None,'last':None,'move':None,'move_serial':0,'round':0,'stake':0,'pot_cents':0,'proposal':None,'winner':None,'created':time.time()}
+    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'hidden_top':False,'pending':None,'last':None,'move':None,'move_serial':0,'round':0,'stake':0,'pot_cents':0,'wallet_type':'test','proposal':None,'winner':None,'created':time.time()}
     ROOMS[code]=room
     player['room']=code
     return room
@@ -95,7 +105,8 @@ def eligible(room):
 
 def try_start_rematch(room):
     offer=room.get('proposal')
-    if not offer or not room.get('winner'):return False
+    if room.get('wallet_type')!='test':return False
+    if not offer or offer.get('wallet_type')!='test' or not room.get('winner'):return False
     participants=eligible(room)
     if len(participants)<2:return False
     if not all(p['id'] in offer['accepted'] for p in participants):return False
@@ -119,6 +130,7 @@ def next_player(room,pid):
     return None
 
 def start(room):
+    if room.get('wallet_type')!='test':return False
     participants=eligible(room)
     if len(participants)<2:return False
     amount=room.get('stake',0)
@@ -304,6 +316,8 @@ async def websocket(request):
             if not p: error(ws,'Identificação necessária.');continue
             room=ROOMS.get(p['room']) if p['room'] else None
             if t=='create':
+                if d.get('wallet_type','test')!='test':
+                    error(ws,'Partidas com carteira real indisponíveis. Use somente saldo fictício de teste.');continue
                 if room: error(ws,'Você já está em uma sala.');continue
                 mode='training' if d.get('mode')=='training' else 'online'
                 p['name']=str(d.get('name') or p['name']).strip()[:20] or 'Jogador'
@@ -314,10 +328,14 @@ async def websocket(request):
                     start(room)
                 else: sync(room)
             elif t=='join':
+                if d.get('wallet_type','test')!='test':
+                    error(ws,'Carteira real não pode entrar em partidas de teste.');continue
                 if room: error(ws,'Saia da sala anterior primeiro.');continue
                 p['name']=str(d.get('name') or p['name']).strip()[:20] or 'Jogador'
                 code=str(d.get('code','')).upper().strip();room=ROOMS.get(code)
                 if not room: error(ws,'Sala não encontrada.');continue
+                if room.get('wallet_type')!='test':
+                    error(ws,'Essa sala não usa carteira de teste.');continue
                 if (room['started'] and not room['winner']) or len(eligible(room))>=4 or room['mode']=='training': error(ws,'Sala indisponível.');continue
                 room['players'].append(p);p['room']=code;sync(room);notice(room,f"{p['name']} entrou na sala.")
             elif t=='start':
@@ -328,6 +346,8 @@ async def websocket(request):
             elif t=='wallet_info':
                 send_wallet(p)
             elif t=='rematch_propose' and room:
+                if d.get('wallet_type','test')!='test' or room.get('wallet_type')!='test':
+                    error(ws,'Propostas não podem misturar carteira real e de teste.');continue
                 if room['host']!=p['id'] or not room.get('winner') or p.get('spectator',False):
                     error(ws,'Somente o anfitrião participante pode propor uma revanche.');continue
                 amount=d.get('amount')
@@ -336,12 +356,12 @@ async def websocket(request):
                 if any(x.get('balance_cents',0)<amount for x in eligible(room)):
                     error(ws,'Um participante não tem saldo de teste suficiente para essa entrada.');continue
                 accepted=[p['id']]+[x['id'] for x in eligible(room) if x['bot']]
-                room['proposal']={'amount':amount,'accepted':accepted}
+                room['proposal']={'amount':amount,'accepted':accepted,'wallet_type':'test'}
                 notice(room,f"{p['name']} propôs R$ {amount/100:.2f} de teste por jogador.")
                 if not try_start_rematch(room):sync(room)
             elif t=='rematch_accept' and room:
                 offer=room.get('proposal')
-                if not room.get('winner') or not offer or p.get('spectator',False):
+                if not room.get('winner') or not offer or offer.get('wallet_type')!='test' or p.get('spectator',False):
                     error(ws,'Não há proposta de revanche disponível.');continue
                 if p.get('balance_cents',0)<offer['amount']:
                     error(ws,'Seu saldo de teste é insuficiente para aceitar esta revanche.');continue
@@ -409,7 +429,7 @@ async def health(request):return web.json_response({'ok':True,'rooms':len(ROOMS)
 async def public_config(request):
     return web.json_response({'donation_pix_key':DONATION_PIX_KEY,
         'donation_pix_owner':DONATION_PIX_OWNER,'donation_enabled':bool(DONATION_PIX_KEY),
-        'withdrawals_enabled':False,'payments_enabled':False})
+        'withdrawals_enabled':False,'payments_enabled':False,'wallet_types':['test'],'real_betting_enabled':False})
 
 app=web.Application()
 app.router.add_get('/',index)
