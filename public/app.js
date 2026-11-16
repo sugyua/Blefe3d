@@ -475,6 +475,9 @@ function prepareVoiceContext(){
     const AudioCtx=window.AudioContext||window.webkitAudioContext;
     if(!AudioCtx)return false;
     state.voiceContext=new AudioCtx();
+    state.voiceSink=state.voiceContext.createGain();
+    state.voiceSink.gain.value=0;
+    state.voiceSink.connect(state.voiceContext.destination);
   }
   if(state.voiceContext.state==='suspended')state.voiceContext.resume().catch(()=>{});
   if(!state.voiceTimer)state.voiceTimer=setInterval(refreshVoiceRings,150);
@@ -500,6 +503,7 @@ function watchVoice(id,stream){
     analyser.fftSize=256;
     analyser.smoothingTimeConstant=.55;
     source.connect(analyser);
+    analyser.connect(state.voiceSink);
     state.voiceMeters.set(id,{source,analyser,bytes:new Uint8Array(analyser.fftSize),
       trackId:track.id,lastSpeech:0});
   }catch(e){console.warn('Indicador de voz indisponível:',e)}
@@ -518,7 +522,7 @@ function refreshVoiceRings(){
           power+=n*n;
         }
         const volume=Math.sqrt(power/meter.bytes.length);
-        if(volume>.028)meter.lastSpeech=now;
+        if(volume>.020)meter.lastSpeech=now;
         speaking=now-meter.lastSpeech<450;
       }
     }catch(e){speaking=false}
@@ -532,7 +536,7 @@ function refreshVoiceRings(){
 function stopVoiceAnalysis(){
   if(state.voiceTimer){clearInterval(state.voiceTimer);state.voiceTimer=null}
   for(const id of [...state.voiceMeters.keys()])stopVoiceMeter(id);
-  if(state.voiceContext){state.voiceContext.close().catch(()=>{});state.voiceContext=null}
+  if(state.voiceContext){state.voiceContext.close().catch(()=>{});state.voiceContext=null;state.voiceSink=null}
 }
 async function startVoice(){
   if(state.voiceReady||state.mediaConnecting)return;
