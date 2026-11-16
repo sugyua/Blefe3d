@@ -6,8 +6,37 @@ from aiohttp import web, WSMsgType
 ROOT = Path(__file__).parent / 'public'
 ROOMS = {}
 USERS = {}
-SUITS = ['♠','♥','♣','♦']
-RANKS = ['A','Q','K']
+COLORS=['red','yellow','green','blue']
+ACTIONS=['skip','draw2','reverse','draw4']
+LABEL={'skip':'BLOQUEIO','draw2':'+2','reverse':'INVERTER','draw4':'+4'}
+def build_deck():
+    cards=[]
+    for color in COLORS:
+        cards.append({'id':secrets.token_hex(5),'color':color,'rank':'0'})
+        for n in range(1,10):
+            for _ in range(2):cards.append({'id':secrets.token_hex(5),'color':color,'rank':str(n)})
+        for a in ('skip','draw2','reverse'):
+            for _ in range(2):cards.append({'id':secrets.token_hex(5),'color':color,'rank':a})
+    for _ in range(4):
+        for rank in ('wild','draw4'):cards.append({'id':secrets.token_hex(5),'color':'wild','rank':rank})
+    random.shuffle(cards)
+    return cards
+
+def draw(room,p,n):
+    for _ in range(n):
+        if not room['deck'] and len(room['discard'])>1:
+            top=room['discard'].pop()
+            room['deck']=room['discard'];random.shuffle(room['deck']);room['discard']=[top]
+        if room['deck']:p['hand'].append(room['deck'].pop())
+
+def advance(room,pid,steps=1):
+    a=room['players'];idx=next(i for i,p in enumerate(a) if p['id']==pid)
+    for _ in range(steps):
+        for __ in range(len(a)):
+            idx=(idx+room['direction'])%len(a)
+            if not a[idx]['out']:break
+    return a[idx]
+
 
 def emit(ws, type_, **data):
     if ws is not None and not ws.closed:
@@ -18,10 +47,12 @@ def send_room(room, type_, **data):
         emit(p.get('ws'),type_,**data)
 
 def info(room):
-    return {'code':room['code'], 'host':room['host'], 'started':room['started'], 'mode':room['mode'],
-            'players':[{'id':p['id'],'name':p['name'],'bot':p['bot'],'connected':p.get('ws') is not None and not p['ws'].closed if p.get('ws') else p['bot'], 'cards':len(p['hand']), 'strikes':p['strikes'], 'out':p['out'], 'media':p.get('media',False)} for p in room['players']],
-            'turn':room['turn'], 'target':room['target'], 'pending':{'player':room['pending']['player'],'count':len(room['pending']['cards'])} if room['pending'] else None,
-            'last':room['last'], 'winner':room.get('winner')}
+    pending=room['pending']
+    return {'code':room['code'],'host':room['host'],'started':room['started'],'mode':room['mode'],
+    'players':[{'id':p['id'],'name':p['name'],'bot':p['bot'],'connected':p.get('ws') is not None and not p['ws'].closed if p.get('ws') else p['bot'],'cards':len(p['hand']),'strikes':0,'out':p['out'],'media':p.get('media',False)} for p in room['players']],
+    'turn':room['turn'],'color':room['color'],'top':room['top'],'direction':room['direction'],
+    'pending':{'player':pending['player'],'claim':pending['claim'],'color':pending['color']} if pending else None,
+    'last':room['last'],'winner':room.get('winner'),'deck_count':len(room['deck'])}
 
 def sync(room):
     payload=info(room)
@@ -34,7 +65,7 @@ def notice(room,msg):
 def make_room(player, mode):
     code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
     while code in ROOMS: code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
-    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'target':None,'pending':None,'last':None,'winner':None,'created':time.time()}
+    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'pending':None,'last':None,'winner':None,'created':time.time()}
     ROOMS[code]=room
     player['room']=code
     return room
@@ -52,98 +83,140 @@ def next_player(room,pid):
         if not p['out']: return p
     return None
 
-def new_target(): return random.choice(RANKS)
-
 def start(room):
-    players=room['players']
-    if len(players)<2: return False
-    deck=[{'id':secrets.token_hex(4),'rank':r,'suit':SUITS[i%4]} for r in RANKS for i in range(8)]
-    deck += [{'id':secrets.token_hex(4),'rank':'J','suit':'★'} for _ in range(4)]
-    random.shuffle(deck)
-    for p in players:
-        p['hand']=[deck.pop() for _ in range(5)]
-        p['strikes']=0; p['out']=False
-    room.update(started=True,turn=random.choice(players)['id'],target=new_target(),pending=None,last=None,winner=None)
-    sync(room); notice(room,'A partida começou! J vale como coringa. Cada jogador pode receber até 3 penalidades.')
+    if len(room['players'])<2:return False
+    room['deck']=build_deck()
+    for p in room['players']:
+        p['hand']=[];p['strikes']=0;p['out']=False
+        draw(room,p,7)
+    i=next(i for i,c in enumerate(room['deck']) if c['rank'].isdigit())
+    card=room['deck'].pop(i)
+    room.update(started=True,turn=random.choice(room['players'])['id'],color=card['color'],
+        top=card,discard=[card],pending=None,direction=1,last=None,winner=None)
+    sync(room);notice(room,'Descarte por cor ou número; ações ficam ocultas e podem ser blefes!')
     bots_schedule(room)
     return True
 
-def finish_if_winner(room):
-    a=alive(room)
-    if len(a)==1:
-        room['winner']=a[0]['id']; room['turn']=None; room['pending']=None
-        notice(room,f"{a[0]['name']} venceu a partida!")
-        sync(room); return True
+def finalize(room,p):
+    if not p['hand']:
+        room['winner']=p['id'];room['turn']=None
+        notice(room,p['name']+' venceu!')
+        sync(room)
+        return True
     return False
 
-def commit_pending(room):
-    pending=room['pending']
-    if not pending: return False
-    p=player_by_id(room,pending['player'])
-    room['pending']=None
-    if not p['hand'] and not p['out']:
-        room['winner']=p['id']; room['turn']=None
-        notice(room,f"{p['name']} ficou sem cartas e venceu!")
-        sync(room); return True
-    return False
+def apply_action(room,actor,kind,newcolor):
+    target=advance(room,actor['id'])
+    if kind in ('draw2','draw4'):
+        n=2 if kind=='draw2' else 4
+        draw(room,target,n)
+        notice(room,f"{target['name']} comprou {n} cartas.")
+    if kind=='reverse':room['direction']*=-1
+    if kind in ('skip','draw2','draw4'):target=advance(room,target['id'])
+    room['color']=newcolor
+    room['turn']=target['id']
+    finalize(room,actor)
+    sync(room);bots_schedule(room)
 
-def play(room,p,ids):
-    if room['winner'] or room['turn'] != p['id'] or p['out']: return 'Não é sua vez.'
-    if not isinstance(ids,list) or not (1<=len(ids)<=3) or len(set(ids))!=len(ids): return 'Selecione de 1 a 3 cartas.'
-    selected=[c for c in p['hand'] if c['id'] in ids]
-    if len(selected)!=len(ids): return 'Cartas inválidas.'
-    if commit_pending(room): return 'A partida terminou.'
-    p['hand']=[c for c in p['hand'] if c['id'] not in ids]
-    room['pending']={'player':p['id'],'cards':selected}
-    nxt=next_player(room,p['id']);room['turn']=nxt['id'] if nxt else None
+def play(room,p,ids,claim=None,newcolor=None):
+    if room['winner'] or room['turn']!=p['id']:return 'Não é sua vez.'
+    if room['pending']:return 'Primeiro, aceite ou duvide da carta oculta.'
+    if not isinstance(ids,list) or len(ids)!=1:return 'Selecione somente uma carta.'
+    card=next((c for c in p['hand'] if c['id']==ids[0]),None)
+    if not card:return 'Carta inválida.'
+    if claim is not None:
+        if claim not in ACTIONS:return 'Declaração inválida.'
+        if claim=='draw4':
+            if newcolor not in COLORS:return 'Escolha uma cor para o +4.'
+            targetcolor=newcolor
+        else:targetcolor=room['color']
+        p['hand'].remove(card)
+        room['pending']={'player':p['id'],'card':card,'claim':claim,'color':targetcolor}
+        room['turn']=advance(room,p['id'])['id']
+        room['last']=None
+        notice(room,p['name']+' declarou '+LABEL[claim]+' com a carta virada para baixo.')
+        sync(room);bots_schedule(room)
+        return None
+    if card['rank'] in ACTIONS:return 'Cartas de ação precisam de declaração oculta.'
+    if card['color']!='wild' and card['color']!=room['color'] and card['rank']!=room['top']['rank']:
+        return 'A carta deve corresponder à cor ou ao número.'
+    if card['color']=='wild' and newcolor not in COLORS:return 'Escolha uma cor.'
+    p['hand'].remove(card);room['discard'].append(card);room['top']=card
+    room['color']=newcolor if card['color']=='wild' else card['color']
+    room['turn']=advance(room,p['id'])['id']
     room['last']=None
-    notice(room,f"{p['name']} declarou {len(selected)} carta(s) {room['target']}. Verdade ou blefe?")
+    notice(room,p['name']+' jogou '+card['rank']+'.')
+    finalize(room,p);sync(room);bots_schedule(room)
+    return None
+
+def resolve(room,p,doubt):
+    q=room['pending']
+    if not q or room['turn']!=p['id'] or room['winner']:return 'Não há blefe pendente para você.'
+    actor=player_by_id(room,q['player'])
+    actual=q['card'];claim=q['claim']
+    truthful=(actual['rank']==claim and (actual['color']==room['color'] or actual['color']=='wild'))
+    room['pending']=None
+    room['discard'].append(actual);room['top']=actual
+    room['last']={'accuser':p['name'],'accused':actor['name'],'lie':not truthful,
+        'cards':[actual],'loser':actor['name'] if not truthful else p['name'],'out':False,
+        'claim':claim,'accepted':not doubt}
+    if doubt:
+        if truthful:
+            n=(2 if claim=='draw2' else 4 if claim=='draw4' else 0)+1
+            draw(room,p,n)
+            notice(room,p['name']+f' duvidou errado e comprou {n} carta(s).')
+            if claim=='reverse':room['direction']*=-1
+            room['color']=q['color'];room['turn']=advance(room,p['id'])['id']
+            finalize(room,actor)
+        else:
+            draw(room,actor,2)
+            room['turn']=p['id']
+            notice(room,actor['name']+' foi pego blefando e comprou 2 cartas!')
+        send_room(room,'reveal',result=room['last'])
+        sync(room);bots_schedule(room)
+        return None
+    if truthful:
+        notice(room,p['name']+' aceitou '+LABEL[claim]+'.')
+        apply_action(room,actor,claim,q['color'])
+    else:
+        # Undetected bluff: declared action takes effect.
+        notice(room,p['name']+' acreditou no blefe.')
+        apply_action(room,actor,claim,q['color'])
+    return None
+
+def draw_turn(room,p):
+    if room['winner'] or room['turn']!=p['id'] or room['pending']:
+        return 'Você não pode comprar agora.'
+    draw(room,p,1)
+    room['turn']=advance(room,p['id'])['id']
+    notice(room,p['name']+' comprou uma carta e passou.')
     sync(room);bots_schedule(room)
     return None
 
-def challenge(room,p):
-    pending=room['pending']
-    if room['winner'] or room['turn']!=p['id'] or not pending: return 'Não é possível duvidar agora.'
-    accused=player_by_id(room,pending['player']); cards=pending['cards']
-    lie=any(c['rank'] not in (room['target'],'J') for c in cards)
-    loser=accused if lie else p
-    loser['strikes']+=1
-    if loser['strikes']>=3: loser['out']=True
-    room['last']={'accuser':p['name'],'accused':accused['name'],'lie':lie,'cards':cards,'loser':loser['name'],'out':loser['out']}
-    room['pending']=None
-    send_room(room,'reveal',result=room['last'])
-    notice(room,f"{'BLEFE!' if lie else 'VERDADE!'} {loser['name']} recebeu uma penalidade ({loser['strikes']}/3).")
-    if finish_if_winner(room): return None
-    if not accused['hand'] and not accused['out'] and not lie:
-        room['winner']=accused['id'];room['turn']=None
-        notice(room,f"{accused['name']} ficou sem cartas e venceu!");sync(room);return None
-    room['target']=new_target()
-    newturn=loser if not loser['out'] and loser['hand'] else next_player(room,loser['id'])
-    if not newturn or not newturn['hand']:
-        candidates=[x for x in alive(room) if x['hand']]
-        newturn=candidates[0] if candidates else None
-    if not newturn:
-        a=alive(room); room['winner']=min(a,key=lambda x:x['strikes'])['id'] if a else None
-        room['turn']=None
-    else: room['turn']=newturn['id']
-    sync(room); bots_schedule(room)
-    return None
-
 def bots_schedule(room):
-    if room['mode']!='training' or not room['started'] or room['winner']: return
-    p=player_by_id(room,room['turn'])
-    if p and p['bot']:
-        async def bot_move(code,pid):
-            await asyncio.sleep(1.5)
-            r=ROOMS.get(code)
-            if not r or r['turn']!=pid or r['winner']: return
-            b=player_by_id(r,pid)
-            if r['pending'] and random.random()<0.30:
-                challenge(r,b);return
-            good=[c for c in b['hand'] if c['rank'] in (r['target'],'J')]
-            chosen=random.choice(good) if good and random.random()<0.76 else random.choice(b['hand'])
-            play(r,b,[chosen['id']])
-        asyncio.create_task(bot_move(room['code'],p['id']))
+    if room['mode']!='training' or room['winner'] or not room['started']:return
+    current=player_by_id(room,room['turn'])
+    if not current or not current['bot']:return
+    async def move(code,pid):
+        await asyncio.sleep(1.1)
+        r=ROOMS.get(code)
+        if not r or r['winner'] or r['turn']!=pid:return
+        bot=player_by_id(r,pid)
+        if r['pending']:
+            resolve(r,bot,random.random()<.32);return
+        cards=bot['hand']
+        playable=[c for c in cards if c['color']=='wild' or c['color']==r['color'] or c['rank']==r['top']['rank']]
+        actions=[c for c in cards if c['rank'] in ACTIONS]
+        if actions and random.random()<.33:
+            card=random.choice(actions)
+            claim=card['rank'] if random.random()<.78 else random.choice(ACTIONS)
+            play(r,bot,[card['id']],claim,random.choice(COLORS));return
+        if playable:
+            card=random.choice(playable)
+            if card['rank'] in ACTIONS:play(r,bot,[card['id']],card['rank'],random.choice(COLORS))
+            else:play(r,bot,[card['id']],None,random.choice(COLORS))
+        else:draw_turn(r,bot)
+    asyncio.create_task(move(room['code'],current['id']))
 
 def create_player(name,ws,token=None):
     pid=token or secrets.token_urlsafe(18)
@@ -196,12 +269,18 @@ async def websocket(request):
                 if not start(room): error(ws,'É preciso ter pelo menos dois jogadores.')
             elif t=='play':
                 if not room or not room['started']: error(ws,'Partida não iniciada.');continue
-                res=play(room,p,d.get('cards'))
+                res=play(room,p,d.get('cards'),d.get('claim'),d.get('color'))
                 if res: error(ws,res)
             elif t=='challenge':
                 if not room: continue
-                res=challenge(room,p)
+                res=resolve(room,p,True)
                 if res: error(ws,res)
+            elif t=='accept' and room:
+                res=resolve(room,p,False)
+                if res:error(ws,res)
+            elif t=='draw' and room:
+                res=draw_turn(room,p)
+                if res:error(ws,res)
             elif t=='leave':
                 if room:
                     original=room['players']
@@ -215,7 +294,7 @@ async def websocket(request):
                         if room['started']:
                             if room['turn']==p['id']:
                                 nextp=next_player(room,p['id']);room['turn']=nextp['id'] if nextp else None
-                            finish_if_winner(room)
+                            sync(room)
                         sync(room);notice(room,f"{p['name']} saiu.")
                     emit(ws,'left')
             elif t=='media_ready' and room:
