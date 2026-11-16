@@ -200,6 +200,8 @@ def play(room,p,ids,claim=None,newcolor=None):
         return 'Selecione somente uma carta.'
     card=next((c for c in p['hand'] if c['id']==ids[0]),None)
     if not card:return 'Carta inválida.'
+    if previous and card['rank'] not in ('draw2','draw4'):
+        return 'Para empilhar é necessário ter uma carta +2 ou +4. Caso contrário, duvide ou compre.'
     if claim is not None:
         if claim not in ACTIONS:return 'Declaração inválida.'
         if previous and claim not in ('draw2','draw4'):
@@ -330,9 +332,11 @@ def bots_schedule(room):
                 if stack_cards and random.random()<.72:
                     c=random.choice(stack_cards)
                     play(r,bot,[c['id']],c['rank'],random.choice(COLORS))
-                elif bot['hand'] and random.random()<.12:
-                    c=random.choice(bot['hand'])
-                    play(r,bot,[c['id']],random.choice(('draw2','draw4')),random.choice(COLORS))
+                elif stack_cards and random.random()<.12:
+                    # A bot may bluff about whether its draw card is +2 or +4.
+                    c=random.choice(stack_cards)
+                    opposite='draw4' if c['rank']=='draw2' else 'draw2'
+                    play(r,bot,[c['id']],opposite,random.choice(COLORS))
                 else:
                     resolve(r,bot,random.random()<.26)
             else:
