@@ -6,6 +6,23 @@ from aiohttp import web, WSMsgType
 ROOT = Path(__file__).parent / 'public'
 ROOMS = {}
 USERS = {}
+TEST_START_BALANCE_CENTS = 5000
+DONATION_PIX_KEY = os.getenv('DONATION_PIX_KEY','').strip()
+DONATION_PIX_OWNER = os.getenv('DONATION_PIX_OWNER','').strip()
+
+def wallet_public(player):
+    return {'balance_cents':player.get('balance_cents',TEST_START_BALANCE_CENTS),
+            'ad_free':player.get('ad_free',False),'history':player.get('wallet_history',[])[-12:]}
+
+def send_wallet(player):
+    if not player.get('bot'):emit(player.get('ws'),'wallet',wallet=wallet_public(player))
+
+def wallet_change(player,delta,description):
+    player['balance_cents']=player.get('balance_cents',TEST_START_BALANCE_CENTS)+delta
+    player.setdefault('wallet_history',[]).append(
+        {'amount_cents':delta,'description':description,'at':int(time.time())})
+    send_wallet(player)
+
 COLORS=['red','yellow','green','blue']
 ACTIONS=['skip','draw2','reverse','draw4']
 LABEL={'skip':'BLOQUEIO','draw2':'+2','reverse':'INVERTER','draw4':'+4'}
@@ -52,7 +69,7 @@ def info(room):
     'players':[{'id':p['id'],'name':p['name'],'bot':p['bot'],'connected':p.get('ws') is not None and not p['ws'].closed if p.get('ws') else p['bot'],'cards':len(p['hand']),'strikes':0,'out':p['out'],'spectator':p.get('spectator',False),'media':p.get('media',False)} for p in room['players']],
     'turn':room['turn'],'color':room['color'],'top':({'rank':'hidden','color':room['color']} if room.get('hidden_top') else room['top']),'direction':room['direction'],
     'pending':{'player':pending['player'],'claim':pending['claim'],'color':pending['color']} if pending else None,
-    'last':room['last'],'winner':room.get('winner'),'deck_count':len(room['deck']), 'move':room.get('move'),'round':room.get('round',0),'stake':room.get('stake',0),'proposal':room.get('proposal')}
+    'last':room['last'],'winner':room.get('winner'),'deck_count':len(room['deck']), 'move':room.get('move'),'round':room.get('round',0),'stake':room.get('stake',0),'pot_cents':room.get('pot_cents',0),'proposal':room.get('proposal')}
 
 def sync(room):
     payload=info(room)
@@ -65,7 +82,7 @@ def notice(room,msg):
 def make_room(player, mode):
     code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
     while code in ROOMS: code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
-    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'hidden_top':False,'pending':None,'last':None,'move':None,'move_serial':0,'round':0,'stake':0,'proposal':None,'winner':None,'created':time.time()}
+    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'hidden_top':False,'pending':None,'last':None,'move':None,'move_serial':0,'round':0,'stake':0,'pot_cents':0,'proposal':None,'winner':None,'created':time.time()}
     ROOMS[code]=room
     player['room']=code
     return room
@@ -82,9 +99,14 @@ def try_start_rematch(room):
     participants=eligible(room)
     if len(participants)<2:return False
     if not all(p['id'] in offer['accepted'] for p in participants):return False
-    room['stake']=offer['amount']
-    start(room)
-    return True
+    amount=offer['amount']
+    if any(p.get('balance_cents',0)<amount for p in participants):
+        room['proposal']=None
+        notice(room,'A revanche foi cancelada: um participante não tem saldo de teste suficiente.')
+        sync(room)
+        return False
+    room['stake']=amount
+    return start(room)
 
 def player_by_id(room, pid):
     return next((p for p in room['players'] if p['id']==pid),None)
@@ -97,7 +119,13 @@ def next_player(room,pid):
     return None
 
 def start(room):
-    if len(eligible(room))<2:return False
+    participants=eligible(room)
+    if len(participants)<2:return False
+    amount=room.get('stake',0)
+    if amount and any(p.get('balance_cents',0)<amount for p in participants):return False
+    room['pot_cents']=amount*len(participants)
+    if amount:
+        for p in participants:wallet_change(p,-amount,'Entrada na rodada de teste')
     room['round']=room.get('round',0)+1
     room['deck']=build_deck()
     for p in room['players']:
@@ -112,8 +140,13 @@ def start(room):
     return True
 
 def finalize(room,p):
+    if room['winner']:return True
     if not p['hand']:
         room['winner']=p['id'];room['turn']=None
+        pot=room.get('pot_cents',0)
+        if pot:
+            wallet_change(p,pot,'Prêmio da rodada de teste')
+            room['pot_cents']=0
         notice(room,p['name']+' venceu!')
         sync(room)
         return True
@@ -241,7 +274,7 @@ def bots_schedule(room):
 
 def create_player(name,ws,token=None):
     pid=token or secrets.token_urlsafe(18)
-    return {'id':pid,'name':str(name).strip()[:20] or 'Jogador','ws':ws,'hand':[],'strikes':0,'out':False,'spectator':False,'bot':False,'room':None,'media':False}
+    return {'id':pid,'name':str(name).strip()[:20] or 'Jogador','ws':ws,'hand':[],'strikes':0,'out':False,'spectator':False,'bot':False,'room':None,'media':False,'balance_cents':TEST_START_BALANCE_CENTS,'wallet_history':[{'amount_cents':TEST_START_BALANCE_CENTS,'description':'Bônus único de boas-vindas para testes','at':int(time.time())}],'ad_free':False}
 
 def error(ws,message): emit(ws,'error',message=message)
 
@@ -266,7 +299,7 @@ async def websocket(request):
                 else:
                     p=create_player(d.get('name'),ws)
                     USERS[p['id']]=p
-                emit(ws,'welcome',id=p['id'],room=p['room'])
+                emit(ws,'welcome',id=p['id'],room=p['room'],wallet=wallet_public(p))
                 continue
             if not p: error(ws,'Identificação necessária.');continue
             room=ROOMS.get(p['room']) if p['room'] else None
@@ -292,22 +325,28 @@ async def websocket(request):
                 if not start(room): error(ws,'É preciso ter pelo menos dois jogadores.')
             elif t=='restart':
                 error(ws,'Para uma revanche, proponha um valor de fichas e aguarde a aceitação de todos.')
+            elif t=='wallet_info':
+                send_wallet(p)
             elif t=='rematch_propose' and room:
                 if room['host']!=p['id'] or not room.get('winner') or p.get('spectator',False):
                     error(ws,'Somente o anfitrião participante pode propor uma revanche.');continue
                 amount=d.get('amount')
-                if not isinstance(amount,int) or isinstance(amount,bool) or amount<0 or amount>1000 or amount%10:
-                    error(ws,'Escolha entre 0 e 1.000 fichas, em intervalos de 10.');continue
+                if not isinstance(amount,int) or isinstance(amount,bool) or amount<0 or amount>5000 or amount%500:
+                    error(ws,'Escolha entre R$ 0 e R$ 50 de teste, em intervalos de R$ 5.');continue
+                if any(x.get('balance_cents',0)<amount for x in eligible(room)):
+                    error(ws,'Um participante não tem saldo de teste suficiente para essa entrada.');continue
                 accepted=[p['id']]+[x['id'] for x in eligible(room) if x['bot']]
                 room['proposal']={'amount':amount,'accepted':accepted}
-                notice(room,f"{p['name']} propôs a próxima rodada com {amount} fichas virtuais por jogador.")
+                notice(room,f"{p['name']} propôs R$ {amount/100:.2f} de teste por jogador.")
                 if not try_start_rematch(room):sync(room)
             elif t=='rematch_accept' and room:
                 offer=room.get('proposal')
                 if not room.get('winner') or not offer or p.get('spectator',False):
                     error(ws,'Não há proposta de revanche disponível.');continue
+                if p.get('balance_cents',0)<offer['amount']:
+                    error(ws,'Seu saldo de teste é insuficiente para aceitar esta revanche.');continue
                 if p['id'] not in offer['accepted']:offer['accepted'].append(p['id'])
-                notice(room,p['name']+' aceitou o valor de fichas virtuais.')
+                notice(room,p['name']+' aceitou o valor de teste proposto.')
                 if not try_start_rematch(room):sync(room)
             elif t=='spectate' and room:
                 if not room.get('winner'):
@@ -367,10 +406,16 @@ async def websocket(request):
 async def index(request):return web.FileResponse(ROOT/'index.html')
 async def health(request):return web.json_response({'ok':True,'rooms':len(ROOMS)})
 
+async def public_config(request):
+    return web.json_response({'donation_pix_key':DONATION_PIX_KEY,
+        'donation_pix_owner':DONATION_PIX_OWNER,'donation_enabled':bool(DONATION_PIX_KEY),
+        'withdrawals_enabled':False,'payments_enabled':False})
+
 app=web.Application()
 app.router.add_get('/',index)
 app.router.add_get('/ws',websocket)
 app.router.add_get('/health',health)
+app.router.add_get('/config',public_config)
 app.router.add_static('/static/',ROOT)
 if __name__=='__main__':
     port=int(os.getenv('PORT','8080'))
