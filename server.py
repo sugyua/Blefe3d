@@ -34,7 +34,7 @@ def advance(room,pid,steps=1):
     for _ in range(steps):
         for __ in range(len(a)):
             idx=(idx+room['direction'])%len(a)
-            if not a[idx]['out']:break
+            if not a[idx]['out'] and not a[idx].get('spectator',False):break
     return a[idx]
 
 
@@ -49,10 +49,10 @@ def send_room(room, type_, **data):
 def info(room):
     pending=room['pending']
     return {'code':room['code'],'host':room['host'],'started':room['started'],'mode':room['mode'],
-    'players':[{'id':p['id'],'name':p['name'],'bot':p['bot'],'connected':p.get('ws') is not None and not p['ws'].closed if p.get('ws') else p['bot'],'cards':len(p['hand']),'strikes':0,'out':p['out'],'media':p.get('media',False)} for p in room['players']],
+    'players':[{'id':p['id'],'name':p['name'],'bot':p['bot'],'connected':p.get('ws') is not None and not p['ws'].closed if p.get('ws') else p['bot'],'cards':len(p['hand']),'strikes':0,'out':p['out'],'spectator':p.get('spectator',False),'media':p.get('media',False)} for p in room['players']],
     'turn':room['turn'],'color':room['color'],'top':({'rank':'hidden','color':room['color']} if room.get('hidden_top') else room['top']),'direction':room['direction'],
     'pending':{'player':pending['player'],'claim':pending['claim'],'color':pending['color']} if pending else None,
-    'last':room['last'],'winner':room.get('winner'),'deck_count':len(room['deck']), 'move':room.get('move'),'round':room.get('round',0)}
+    'last':room['last'],'winner':room.get('winner'),'deck_count':len(room['deck']), 'move':room.get('move'),'round':room.get('round',0),'stake':room.get('stake',0),'proposal':room.get('proposal')}
 
 def sync(room):
     payload=info(room)
@@ -65,13 +65,26 @@ def notice(room,msg):
 def make_room(player, mode):
     code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
     while code in ROOMS: code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
-    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'hidden_top':False,'pending':None,'last':None,'move':None,'move_serial':0,'round':0,'winner':None,'created':time.time()}
+    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'hidden_top':False,'pending':None,'last':None,'move':None,'move_serial':0,'round':0,'stake':0,'proposal':None,'winner':None,'created':time.time()}
     ROOMS[code]=room
     player['room']=code
     return room
 
 def alive(room):
-    return [p for p in room['players'] if not p['out']]
+    return [p for p in room['players'] if not p['out'] and not p.get('spectator',False)]
+
+def eligible(room):
+    return [p for p in room['players'] if not p.get('spectator',False)]
+
+def try_start_rematch(room):
+    offer=room.get('proposal')
+    if not offer or not room.get('winner'):return False
+    participants=eligible(room)
+    if len(participants)<2:return False
+    if not all(p['id'] in offer['accepted'] for p in participants):return False
+    room['stake']=offer['amount']
+    start(room)
+    return True
 
 def player_by_id(room, pid):
     return next((p for p in room['players'] if p['id']==pid),None)
@@ -84,16 +97,16 @@ def next_player(room,pid):
     return None
 
 def start(room):
-    if len(room['players'])<2:return False
+    if len(eligible(room))<2:return False
     room['round']=room.get('round',0)+1
     room['deck']=build_deck()
     for p in room['players']:
         p['hand']=[];p['strikes']=0;p['out']=False
-        draw(room,p,7)
+        if not p.get('spectator',False):draw(room,p,7)
     i=next(i for i,c in enumerate(room['deck']) if c['rank'].isdigit())
     card=room['deck'].pop(i)
-    room.update(started=True,turn=random.choice(room['players'])['id'],color=card['color'],
-        top=card,discard=[card],pending=None,direction=1,hidden_top=False,last=None,move=None,move_serial=0,winner=None)
+    room.update(started=True,turn=random.choice(eligible(room))['id'],color=card['color'],
+        top=card,discard=[card],pending=None,direction=1,hidden_top=False,last=None,move=None,move_serial=0,winner=None,proposal=None)
     sync(room);notice(room,'Descarte por cor ou número; ações ficam ocultas e podem ser blefes!')
     bots_schedule(room)
     return True
@@ -121,7 +134,7 @@ def apply_action(room,actor,kind,newcolor):
     sync(room);bots_schedule(room)
 
 def play(room,p,ids,claim=None,newcolor=None):
-    if room['winner'] or room['turn']!=p['id']:return 'Não é sua vez.'
+    if p.get('spectator',False) or room['winner'] or room['turn']!=p['id']:return 'Não é sua vez.'
     if room['pending']:return 'Primeiro, aceite ou duvide da carta oculta.'
     if not isinstance(ids,list) or len(ids)!=1:return 'Selecione somente uma carta.'
     card=next((c for c in p['hand'] if c['id']==ids[0]),None)
@@ -157,7 +170,7 @@ def play(room,p,ids,claim=None,newcolor=None):
 
 def resolve(room,p,doubt):
     q=room['pending']
-    if not q or room['turn']!=p['id'] or room['winner']:return 'Não há blefe pendente para você.'
+    if not q or p.get('spectator',False) or room['turn']!=p['id'] or room['winner']:return 'Não há blefe pendente para você.'
     actor=player_by_id(room,q['player'])
     actual=q['card'];claim=q['claim']
     truthful=(actual['rank']==claim and (actual['color']==room['color'] or actual['color']=='wild'))
@@ -193,7 +206,7 @@ def resolve(room,p,doubt):
     return None
 
 def draw_turn(room,p):
-    if room['winner'] or room['turn']!=p['id'] or room['pending']:
+    if p.get('spectator',False) or room['winner'] or room['turn']!=p['id'] or room['pending']:
         return 'Você não pode comprar agora.'
     draw(room,p,1)
     room['turn']=advance(room,p['id'])['id']
@@ -228,7 +241,7 @@ def bots_schedule(room):
 
 def create_player(name,ws,token=None):
     pid=token or secrets.token_urlsafe(18)
-    return {'id':pid,'name':str(name).strip()[:20] or 'Jogador','ws':ws,'hand':[],'strikes':0,'out':False,'bot':False,'room':None,'media':False}
+    return {'id':pid,'name':str(name).strip()[:20] or 'Jogador','ws':ws,'hand':[],'strikes':0,'out':False,'spectator':False,'bot':False,'room':None,'media':False}
 
 def error(ws,message): emit(ws,'error',message=message)
 
@@ -272,20 +285,39 @@ async def websocket(request):
                 p['name']=str(d.get('name') or p['name']).strip()[:20] or 'Jogador'
                 code=str(d.get('code','')).upper().strip();room=ROOMS.get(code)
                 if not room: error(ws,'Sala não encontrada.');continue
-                if room['started'] or len(room['players'])>=4 or room['mode']=='training': error(ws,'Sala indisponível.');continue
+                if (room['started'] and not room['winner']) or len(eligible(room))>=4 or room['mode']=='training': error(ws,'Sala indisponível.');continue
                 room['players'].append(p);p['room']=code;sync(room);notice(room,f"{p['name']} entrou na sala.")
             elif t=='start':
                 if not room or room['host']!=p['id']: error(ws,'Somente o anfitrião pode iniciar.');continue
                 if not start(room): error(ws,'É preciso ter pelo menos dois jogadores.')
             elif t=='restart':
-                if not room or room['host']!=p['id']:
-                    error(ws,'Somente o anfitrião pode iniciar uma revanche.');continue
-                if not room['winner']:
-                    error(ws,'A partida ainda não terminou.');continue
-                online=sum(1 for x in room['players'] if x['bot'] or (x.get('ws') and not x['ws'].closed))
-                if online<2:
-                    error(ws,'Aguardando mais jogadores para a revanche.');continue
-                start(room)
+                error(ws,'Para uma revanche, proponha um valor de fichas e aguarde a aceitação de todos.')
+            elif t=='rematch_propose' and room:
+                if room['host']!=p['id'] or not room.get('winner') or p.get('spectator',False):
+                    error(ws,'Somente o anfitrião participante pode propor uma revanche.');continue
+                amount=d.get('amount')
+                if not isinstance(amount,int) or isinstance(amount,bool) or amount<0 or amount>1000 or amount%10:
+                    error(ws,'Escolha entre 0 e 1.000 fichas, em intervalos de 10.');continue
+                accepted=[p['id']]+[x['id'] for x in eligible(room) if x['bot']]
+                room['proposal']={'amount':amount,'accepted':accepted}
+                notice(room,f"{p['name']} propôs a próxima rodada com {amount} fichas virtuais por jogador.")
+                if not try_start_rematch(room):sync(room)
+            elif t=='rematch_accept' and room:
+                offer=room.get('proposal')
+                if not room.get('winner') or not offer or p.get('spectator',False):
+                    error(ws,'Não há proposta de revanche disponível.');continue
+                if p['id'] not in offer['accepted']:offer['accepted'].append(p['id'])
+                notice(room,p['name']+' aceitou o valor de fichas virtuais.')
+                if not try_start_rematch(room):sync(room)
+            elif t=='spectate' and room:
+                if not room.get('winner'):
+                    error(ws,'Você só pode optar por assistir entre partidas.');continue
+                p['spectator']=True;p['hand']=[]
+                notice(room,p['name']+' decidiu assistir às próximas partidas.')
+                if p['id']==room['host']:
+                    nxt=next((x for x in eligible(room) if not x['bot']),None)
+                    if nxt:room['host']=nxt['id']
+                if not try_start_rematch(room):sync(room)
             elif t=='play':
                 if not room or not room['started']: error(ws,'Partida não iniciada.');continue
                 res=play(room,p,d.get('cards'),d.get('claim'),d.get('color'))
