@@ -1,5 +1,6 @@
 """Blefe 3D - authoritative multiplayer server."""
-import asyncio, json, random, secrets, string, time, os, hmac, resource
+import asyncio, json, random, secrets, string, time, os, hmac, resource, logging
+from collections import deque
 from pathlib import Path
 from aiohttp import web, WSMsgType
 
@@ -105,6 +106,7 @@ def sync(room):
         emit(p.get('ws'),'state',state=payload,hand=p['hand'])
 
 def notice(room,msg):
+    room.setdefault('public_events',deque(maxlen=100)).append({'at':int(time.time()),'text':msg})
     send_room(room,'notice',message=msg)
 
 def make_room(player, mode, stake=0, visibility='private'):
@@ -204,7 +206,7 @@ def finalize(room,p):
         if pot:
             wallet_change(p,pot,'Prêmio da rodada de teste')
             room['pot_cents']=0
-        notice(room,p['name']+' venceu!')
+        notice(room,p['name']+f' venceu! Prêmio fictício: R$ {pot/100:.2f}.')
         sync(room)
         return True
     return False
@@ -293,7 +295,7 @@ def play(room,p,ids,claim=None,newcolor=None):
     room['move_serial']+=1
     room['move']={'id':room['move_serial'],'player':p['id'],'name':p['name'],
                   'hidden':False,'card':card}
-    notice(room,p['name']+' jogou '+card['rank']+'.')
+    notice(room,p['name']+' jogou '+card['rank']+' ('+card['color']+').')
     finalize(room,p);sync(room);bots_schedule(room)
     return None
 
@@ -313,6 +315,7 @@ def resolve(room,p,doubt):
                   'out':False,'claim':claim,'accepted':not doubt,'penalty':0,
                   'stack_total':stack_total,'stack_count':count}
     if doubt:
+        room.setdefault('public_events',deque(maxlen=100)).append({'at':int(time.time()),'text':f"Carta revelada: {actual['rank']} ({actual['color']})."})
         if truthful:
             # Wrong challenge pays all accumulated draw cards plus one extra.
             n=stack_total+1 if stack_total else 1
@@ -625,9 +628,27 @@ async def list_public_rooms(request):
 async def admin_panel(request):
     return web.FileResponse(ROOT/'admin.html')
 
-async def admin_metrics(request):
+def admin_authorized(request):
     supplied=request.headers.get('Authorization','')
-    if not ADMIN_TOKEN or not hmac.compare_digest(supplied,'Bearer '+ADMIN_TOKEN):
+    return bool(ADMIN_TOKEN) and hmac.compare_digest(supplied,'Bearer '+ADMIN_TOKEN)
+
+async def admin_observe(request):
+    if not admin_authorized(request):
+        return web.json_response({'error':'Acesso restrito.'},status=401,headers={'Cache-Control':'no-store'})
+    code=request.match_info['code'].upper()
+    room=ROOMS.get(code)
+    logging.getLogger('blefe.admin').warning('Acesso administrativo a partida: sala=%s origem=%s resultado=%s', code, request.remote, 'ok' if room else 'nao_encontrada')
+    if not room:
+        return web.json_response({'error':'Sala não encontrada.'},status=404,headers={'Cache-Control':'no-store'})
+    top=room.get('top')
+    visible_top={'rank':top['rank'],'color':top['color']} if top and not room.get('hidden_top') and not room.get('pending') else None
+    pending=room.get('pending')
+    return web.json_response({'room':room_summary(room), 'top':visible_top,
+        'color':room.get('color'), 'claim':pending['claim'] if pending else None,
+        'events':list(room.get('public_events',()))},headers={'Cache-Control':'no-store'})
+
+async def admin_metrics(request):
+    if not admin_authorized(request):
         return web.json_response({'error':'Acesso restrito.'},status=401,headers={'Cache-Control':'no-store'})
     rooms=[room_summary(room) for room in ROOMS.values()]
     live=sum(1 for r in rooms if r['status']=='em andamento')
@@ -663,6 +684,7 @@ app.router.add_get('/api/sala/{code}',room_preview)
 app.router.add_get('/api/salas-publicas',list_public_rooms)
 app.router.add_get('/painel',admin_panel)
 app.router.add_get('/api/admin/metrics',admin_metrics)
+app.router.add_get('/api/admin/rooms/{code}',admin_observe)
 app.router.add_static('/static/',ROOT)
 if __name__=='__main__':
     port=int(os.getenv('PORT','8080'))

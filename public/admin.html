@@ -55,12 +55,13 @@ h2{font-size:20px;margin:18px 0 12px}
 <section id="adminContent" hidden>
 <div id="cards" class="cards"></div>
 <div><h2>Salas e partidas</h2><div id="rooms"></div><div id="empty" hidden>Nenhuma sala aberta ou em andamento.</div></div>
+<section id="observation" hidden aria-live="polite"><h2>Acompanhamento da sala <span id="observedCode"></span></h2><button id="stopWatching">Fechar acompanhamento</button><p id="observedState"></p><h3>Ações públicas recentes</h3><ol id="events"></ol></section>
 <p class="footer">Líder provisório = participante com menos cartas. Valores em R$ de teste, sem dinheiro real. Os dados de conexões e picos são reiniciados quando o processo reinicia. Atualização a cada 5 segundos enquanto a aba estiver aberta.</p>
 </section></main>
 <script>
 (()=>{'use strict';
 const $=id=>document.getElementById(id);
-let key=sessionStorage.getItem('blefe_admin_token')||'',timer=null;
+let key=sessionStorage.getItem('blefe_admin_token')||'',timer=null,observed=null;
 const money=cents=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((cents||0)/100);
 const cells=[['connections','Conexões WebSocket'],['connected_players','Jogadores conectados'],['peak_connections','Pico simultâneo'],['rooms','Salas totais'],['public_rooms','Salas públicas'],['matches_live','Partidas em andamento'],['matches_started','Partidas iniciadas'],['memory_peak_mb','Memória máxima (MB)'],['messages_received','Mensagens WebSocket'],['registered_sessions','Sessões criadas']];
 function el(tag,cl,text){const node=document.createElement(tag);if(cl)node.className=cl;if(text!==undefined)node.textContent=String(text);return node}
@@ -80,7 +81,22 @@ function roomCard(room){
    node.append(el('span','',p.name+(p.bot?' [robô]':'')+(p.turn?' • VEZ':'')),el('strong','',(p.spectator?'Espectador':p.cards+' cartas')+(!p.connected?' • offline':'')));
    members.append(node);
  }
- root.append(members);return root
+ const watch=el('button','','Acompanhar');watch.onclick=()=>{observed=room.code;refreshObservation()};
+ root.append(members,watch);return root
+}
+async function refreshObservation(){
+ if(!observed||!key)return;
+ const code=observed;
+ try{
+  const response=await fetch('/api/admin/rooms/'+encodeURIComponent(code),{headers:{Authorization:'Bearer '+key},cache:'no-store'});
+  if(observed!==code)return;
+  if(!response.ok)throw new Error(response.status===404?'Sala encerrada ou indisponível.':'Não foi possível atualizar o acompanhamento.');
+  const data=await response.json();if(observed!==code)return;
+  $('observation').hidden=false;$('observedCode').textContent=code;
+  const turn=data.room.players.find(p=>p.turn);
+  $('observedState').textContent='Vez: '+(turn?turn.name:'—')+' • Carta visível: '+(data.top?data.top.rank+' ('+data.top.color+')':'oculta ou indisponível')+' • Declaração: '+(data.claim||'—');
+  $('events').replaceChildren(...data.events.map(event=>el('li','',new Date(event.at*1000).toLocaleTimeString('pt-BR')+' — '+event.text)));
+ }catch(e){$('observation').hidden=false;$('observedState').textContent=e.message}
 }
 async function refresh(){
  if(!key)return;
@@ -98,6 +114,7 @@ async function refresh(){
   data.rooms.forEach(r=>rooms.append(roomCard(r)));
   $('empty').hidden=data.rooms.length!==0;
   $('status').textContent='Online • '+new Date().toLocaleTimeString('pt-BR');
+  if(observed)await refreshObservation();
   $('loginError').textContent='';
  }catch(e){
   $('status').textContent='Erro de atualização';
@@ -112,7 +129,8 @@ function start(){if(timer)clearInterval(timer);timer=setInterval(()=>{if(!docume
 $('signIn').onclick=()=>{key=$('token').value.trim();if(!key)return;$('token').value='';sessionStorage.setItem('blefe_admin_token',key);start()};
 $('token').addEventListener('keydown',e=>{if(e.key==='Enter')$('signIn').click()});
 $('refresh').onclick=refresh;
-$('logout').onclick=()=>{key='';sessionStorage.removeItem('blefe_admin_token');clearInterval(timer);timer=null;$('login').hidden=false;$('adminContent').hidden=true;$('refresh').hidden=true;$('logout').hidden=true;$('status').textContent='Acesso restrito'};
+$('stopWatching').onclick=()=>{observed=null;$('observation').hidden=true;$('events').replaceChildren()};
+$('logout').onclick=()=>{observed=null;$('observation').hidden=true;$('events').replaceChildren();key='';sessionStorage.removeItem('blefe_admin_token');clearInterval(timer);timer=null;$('login').hidden=false;$('adminContent').hidden=true;$('refresh').hidden=true;$('logout').hidden=true;$('status').textContent='Acesso restrito'};
 if(key)start();
 })();
 </script>
