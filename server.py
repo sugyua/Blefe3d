@@ -210,7 +210,8 @@ def play(room,p,ids,claim=None,newcolor=None):
             if newcolor not in COLORS:return 'Escolha uma cor para o +4.'
             targetcolor=newcolor
         else:
-            targetcolor=room['color']
+            # Preserve the color selected by the latest +4 in this draw chain.
+            targetcolor=previous['color'] if previous else room['color']
         before_color=room['color']
         if previous:
             # The older hidden card stays in the discard pile without being revealed.
