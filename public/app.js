@@ -4,7 +4,7 @@ const COR={red:'VERMELHO',yellow:'AMARELO',green:'VERDE',blue:'AZUL',wild:'CORIN
 const ACAO={skip:'BLOQUEIO',draw2:'+2',reverse:'INVERTER',draw4:'+4',wild:'CORINGA',hidden:'CARTA OCULTA'};
 const dinheiroTeste=centavos=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(centavos||0)/100);
 const nomeCarta=c=>!c?'carta':(ACAO[c.rank]||c.rank)+(c.color&&c.color!=='wild'?' '+(COR[c.color]||''):'');
-const state={id:null,room:null,hand:[],selected:new Set(),ws:null,token:localStorage.getItem('blefe_token'),name:localStorage.getItem('blefe_name')||'',stream:null,pcs:new Map(),remoteStreams:new Map(),micEnabled:true,camEnabled:false,voiceReady:false,volumes:new Map(),selectedColor:'red',claim:null,previewStream:null,lastAnimatedMove:null,mediaConnecting:false,revealTimers:[],victoryShown:null,victoryTimer:null,wallet:{balance_cents:5000,history:[],ad_free:false},publicConfig:null};
+const state={id:null,room:null,hand:[],selected:new Set(),ws:null,token:localStorage.getItem('blefe_token'),name:localStorage.getItem('blefe_name')||'',stream:null,pcs:new Map(),remoteStreams:new Map(),micEnabled:true,camEnabled:false,voiceReady:false,volumes:new Map(),selectedColor:'red',claim:null,previewStream:null,lastAnimatedMove:null,mediaConnecting:false,revealTimers:[],victoryShown:null,victoryTimer:null,wallet:{balance_cents:5000,test:{balance_cents:5000},real:{balance_cents:0,enabled:false},history:[],ad_free:false},publicConfig:null};
 $('nickname').value=state.name;
 function toast(s){const el=$('toast');el.textContent=s;el.style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.style.display='none',3500)}
 function send(type,data={}){if(state.ws?.readyState===1)state.ws.send(JSON.stringify({type,...data}));else toast('Servidor desconectado. Reconectando...')}
@@ -21,7 +21,7 @@ else if(m.type==='left'){state.room=null;state.hand=[];state.selected.clear();cl
 else if(m.type==='media_peer'){if(m.id!==state.id){if(m.ready&&state.voiceReady&&state.id<m.id){const peer=state.room?.players.find(p=>p.id===m.id);if(peer?.media)await connectPeer(m.id)}else if(!m.ready)removePeer(m.id)}}
 else if(m.type==='signal')await onSignal(m.sender,m.signal)};
 ws.onclose=()=>{if(state.ws!==ws)return;$('connection').textContent='● Desconectado';for(const id of [...state.pcs.keys()])removePeer(id,false);renderPeers();setTimeout(connection,1600)};ws.onerror=()=>{}}
-function startNamed(type,extra){const name=$('nickname').value.trim()||'Jogador';state.name=name;localStorage.setItem('blefe_name',name);if(!state.id){toast('Conectando ao servidor...');return}send(type,{...extra,name})}
+function startNamed(type,extra){const name=$('nickname').value.trim()||'Jogador';state.name=name;localStorage.setItem('blefe_name',name);if(!state.id){toast('Conectando ao servidor...');return}send(type,{...extra,name,wallet_type:'test'})}
 $('training').onclick=()=>startNamed('create',{mode:'training'});
 $('create').onclick=()=>startNamed('create',{mode:'online'});
 $('join').onclick=()=>startNamed('join',{code:$('roomcode').value.trim().toUpperCase()});
@@ -30,7 +30,7 @@ $('victoryClose').onclick=()=>{$('victory').hidden=true};
 $('victoryLeave').onclick=()=>{$('victory').hidden=true;send('leave')};
 $('victorySpectate').onclick=()=>{send('spectate');$('victory').hidden=true;toast('Você continuará na sala como espectador.')};
 $('victoryAccept').onclick=()=>send('rematch_accept');
-$('victoryRematch').onclick=()=>send('rematch_propose',{amount:Number($('rematchAmount').value)});
+$('victoryRematch').onclick=()=>send('rematch_propose',{amount:Number($('rematchAmount').value),wallet_type:'test'});
 $('rematchAmount').oninput=()=>{$('rematchAmountLabel').textContent=dinheiroTeste($('rematchAmount').value)+' de teste'};
 $('openWallet').onclick=()=>{updateWalletUI();$('walletModal').hidden=false};
 $('gameWallet').onclick=()=>{updateWalletUI();$('walletModal').hidden=false};
@@ -44,9 +44,11 @@ $('copyDonationPix').onclick=async()=>{
   catch(err){window.prompt('Copie a chave Pix de apoio:',key)}
 };
 function updateWalletUI(){
-  const w=state.wallet||{balance_cents:5000,history:[]};
+  const w=state.wallet||{test:{balance_cents:5000},real:{balance_cents:0},history:[]};
+  const saldoTeste=w.test?.balance_cents??w.balance_cents??5000;
   for(const id of ['lobbyBalance','walletBigBalance','gameWallet'])
-    $(id).textContent=dinheiroTeste(w.balance_cents);
+    $(id).textContent=dinheiroTeste(saldoTeste);
+  $('walletRealBalance').textContent=dinheiroTeste(w.real?.balance_cents||0);
   const el=$('walletTransactions');el.replaceChildren();
   (w.history||[]).slice().reverse().slice(0,8).forEach(entry=>{
     const row=document.createElement('div');row.className='walletTransaction';
@@ -243,7 +245,7 @@ function populateVictory(room){
   const observer=!!me?.spectator;
   const hosting=room.host===state.id&&!observer;
   const offer=room.proposal;
-  const max=Math.max(0,Math.min(5000,Math.floor((state.wallet?.balance_cents||0)/500)*500));
+  const max=Math.max(0,Math.min(5000,Math.floor((state.wallet?.test?.balance_cents??state.wallet?.balance_cents??0)/500)*500));
   $('rematchAmount').max=String(max);
   if(Number($('rematchAmount').value)>max)$('rematchAmount').value=String(max);
   $('rematchAmountLabel').textContent=dinheiroTeste($('rematchAmount').value)+' de teste';
@@ -253,9 +255,9 @@ function populateVictory(room){
   $('victoryWaiting').textContent=observer?'Você está assistindo. Aguarde a próxima rodada.':'Aguardando o anfitrião propor a revanche.';
   $('victorySpectate').hidden=observer;
   $('victoryAccept').hidden=observer||!offer||offer.accepted.includes(state.id);
-  $('victoryAccept').disabled=!!offer&&Number(state.wallet?.balance_cents||0)<offer.amount;
+  $('victoryAccept').disabled=!!offer&&Number(state.wallet?.test?.balance_cents??state.wallet?.balance_cents??0)<offer.amount;
   if(offer){
-    $('rematchProposedValue').textContent='Proposta: '+dinheiroTeste(offer.amount)+' de teste por participante';
+    $('rematchProposedValue').textContent='Proposta: '+dinheiroTeste(offer.amount)+' de teste por participante — sem dinheiro real';
     const acceptance=$('rematchAcceptance');acceptance.replaceChildren();
     room.players.filter(p=>!p.spectator).forEach(p=>{
       const label=document.createElement('div');label.className='rematchVote';
