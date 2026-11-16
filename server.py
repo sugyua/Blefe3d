@@ -89,10 +89,10 @@ def sync(room):
 def notice(room,msg):
     send_room(room,'notice',message=msg)
 
-def make_room(player, mode):
+def make_room(player, mode, stake=0):
     code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
     while code in ROOMS: code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
-    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'hidden_top':False,'pending':None,'last':None,'move':None,'move_serial':0,'round':0,'stake':0,'pot_cents':0,'wallet_type':'test','proposal':None,'winner':None,'created':time.time()}
+    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'hidden_top':False,'pending':None,'last':None,'move':None,'move_serial':0,'round':0,'stake':stake,'pot_cents':0,'wallet_type':'test','proposal':None,'winner':None,'created':time.time()}
     ROOMS[code]=room
     player['room']=code
     return room
@@ -320,8 +320,13 @@ async def websocket(request):
                     error(ws,'Partidas com carteira real indisponíveis. Use somente saldo fictício de teste.');continue
                 if room: error(ws,'Você já está em uma sala.');continue
                 mode='training' if d.get('mode')=='training' else 'online'
+                amount=0 if mode=='training' else d.get('stake')
+                if type(amount) is not int or amount<0 or amount>5000 or amount%500:
+                    error(ws,'Escolha o valor de entrada: de R$ 0 a R$ 50, em intervalos de R$ 5 (saldo de teste).');continue
+                if p.get('test_balance_cents',0)<amount:
+                    error(ws,'Seu saldo de teste não cobre o valor escolhido para a sala.');continue
                 p['name']=str(d.get('name') or p['name']).strip()[:20] or 'Jogador'
-                room=make_room(p,mode)
+                room=make_room(p,mode,amount)
                 if mode=='training':
                     for i in range(3):
                         b=create_player(['Robô Ana','Robô Beto','Robô Cris'][i],None);b['bot']=True;b['id']='BOT'+str(i)+room['code'];b['room']=room['code'];room['players'].append(b)
@@ -337,10 +342,14 @@ async def websocket(request):
                 if room.get('wallet_type')!='test':
                     error(ws,'Essa sala não usa carteira de teste.');continue
                 if (room['started'] and not room['winner']) or len(eligible(room))>=4 or room['mode']=='training': error(ws,'Sala indisponível.');continue
+                if d.get('accept_stake_cents')!=room.get('stake',0) or type(d.get('accept_stake_cents')) is not int:
+                    error(ws,'Confira e aceite o valor de entrada da sala antes de participar.');continue
+                if p.get('test_balance_cents',0)<room.get('stake',0):
+                    error(ws,'Saldo de teste insuficiente para entrar nesta sala.');continue
                 room['players'].append(p);p['room']=code;sync(room);notice(room,f"{p['name']} entrou na sala.")
             elif t=='start':
                 if not room or room['host']!=p['id']: error(ws,'Somente o anfitrião pode iniciar.');continue
-                if not start(room): error(ws,'É preciso ter pelo menos dois jogadores.')
+                if not start(room): error(ws,'São necessários dois jogadores com saldo de teste suficiente para iniciar.')
             elif t=='restart':
                 error(ws,'Para uma revanche, proponha um valor de fichas e aguarde a aceitação de todos.')
             elif t=='wallet_info':
@@ -426,6 +435,20 @@ async def websocket(request):
 async def index(request):return web.FileResponse(ROOT/'index.html')
 async def health(request):return web.json_response({'ok':True,'rooms':len(ROOMS)})
 
+async def room_preview(request):
+    code=str(request.match_info.get('code','')).upper().strip()
+    room=ROOMS.get(code)
+    if not room or room.get('mode')!='online':
+        return web.json_response({'error':'Sala não encontrada.'},status=404)
+    host=player_by_id(room,room['host'])
+    joinable=(not room['started'] or bool(room['winner'])) and len(eligible(room))<4
+    return web.json_response({
+        'code':room['code'],'host_name':host['name'] if host else 'Anfitrião',
+        'stake_cents':room.get('stake',0),'wallet_type':'test',
+        'joinable':joinable,'players':len(eligible(room)),
+        'round_started':bool(room['started'] and not room['winner'])
+    })
+
 async def public_config(request):
     return web.json_response({'donation_pix_key':DONATION_PIX_KEY,
         'donation_pix_owner':DONATION_PIX_OWNER,'donation_enabled':bool(DONATION_PIX_KEY),
@@ -436,6 +459,7 @@ app.router.add_get('/',index)
 app.router.add_get('/ws',websocket)
 app.router.add_get('/health',health)
 app.router.add_get('/config',public_config)
+app.router.add_get('/api/sala/{code}',room_preview)
 app.router.add_static('/static/',ROOT)
 if __name__=='__main__':
     port=int(os.getenv('PORT','8080'))
