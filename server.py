@@ -108,6 +108,9 @@ def notice(room,msg):
     send_room(room,'notice',message=msg)
 
 def make_room(player, mode, stake=0, visibility='private'):
+    if mode not in ('training','online'):raise ValueError('Modo de sala inválido.')
+    if player.get('bot'):raise ValueError('Robôs não podem criar salas.')
+    if mode=='training':visibility='private'
     code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
     while code in ROOMS: code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
     room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'hidden_top':False,'pending':None,'draw_stack':0,'stack_count':0,'last':None,'move':None,'move_serial':0,'round':0,'stake':stake,'visibility':visibility,'pot_cents':0,'wallet_type':'test','proposal':None,'winner':None,'created':time.time()}
@@ -152,6 +155,14 @@ def start(room):
     if room.get('wallet_type')!='test':return False
     participants=eligible(room)
     if len(participants)<2:return False
+    # Treinamento contém um humano e robôs; salas online aceitam exclusivamente humanos.
+    if room.get('mode')=='training':
+        if sum(not p['bot'] for p in participants)!=1:return False
+        if sum(p['bot'] for p in participants)!=3:return False
+    elif room.get('mode')=='online':
+        if any(p['bot'] for p in participants):return False
+    else:
+        return False
     amount=room.get('stake',0)
     if amount and any(p.get('test_balance_cents',0)<amount for p in participants):return False
     room['pot_cents']=amount*len(participants)
@@ -419,7 +430,7 @@ async def websocket(request):
                 visibility=d.get('visibility','private')
                 if visibility not in ('public','private'):error(ws,'Escolha sala pública ou privada.');continue
                 if mode=='training':visibility='private'
-                amount=0 if mode=='training' else d.get('stake')
+                amount=d.get('stake',0) if mode=='training' else d.get('stake')
                 if type(amount) is not int or amount<0 or amount>5000 or amount%500:
                     error(ws,'Escolha o valor de entrada: de R$ 0 a R$ 50, em intervalos de R$ 5 (saldo de teste).');continue
                 if p.get('test_balance_cents',0)<amount:
@@ -502,20 +513,36 @@ async def websocket(request):
                 if res:error(ws,res)
             elif t=='leave':
                 if room:
-                    original=room['players']
-                    if room['started']: p['out']=True
-                    room['players']=[x for x in original if x['id']!=p['id']]
-                    p['room']=None;p['hand']=[];p['media']=False
-                    if not room['players'] or room['mode']=='training':
+                    if room['mode']=='training':
+                        # Desistir termina o treino imediatamente; a entrada fictícia já foi
+                        # debitada no início e NUNCA é reembolsada após abandono.
+                        forfeited=(room.get('stake',0) if room['started'] and not room.get('winner') else 0)
                         ROOMS.pop(room['code'],None)
+                        room['pot_cents']=0
+                        room['pending']=None
+                        for member in room['players']:
+                            member['room']=None
+                            member['hand']=[]
+                            member['media']=False
+                        emit(ws,'left',training_closed=True,forfeited_cents=forfeited)
                     else:
-                        if room['host']==p['id']:room['host']=room['players'][0]['id']
-                        if room['started']:
-                            if room['turn']==p['id']:
-                                nextp=next_player(room,p['id']);room['turn']=nextp['id'] if nextp else None
+                        original=room['players']
+                        if room['started']:p['out']=True
+                        room['players']=[x for x in original if x['id']!=p['id']]
+                        p['room']=None;p['hand']=[];p['media']=False
+                        if not room['players']:
+                            ROOMS.pop(room['code'],None)
+                        else:
+                            if room['host']==p['id']:room['host']=room['players'][0]['id']
+                            if room['started'] and room['turn']==p['id']:
+                                try:
+                                    nextp=next_player(room,p['id'])
+                                    room['turn']=nextp['id'] if nextp else None
+                                except (ValueError,StopIteration):
+                                    room['turn']=None
                             sync(room)
-                        sync(room);notice(room,f"{p['name']} saiu.")
-                    emit(ws,'left')
+                            notice(room,f"{p['name']} saiu.")
+                        emit(ws,'left')
             elif t=='media_ready' and room:
                 p['media']=bool(d.get('ready'))
                 sync(room)
@@ -529,8 +556,21 @@ async def websocket(request):
         if p and p.get('ws') is ws:
             p['ws']=None;p['media']=False
             if p['room'] in ROOMS:
-                r=ROOMS[p['room']];sync(r);send_room(r,'media_peer',id=p['id'],ready=False)
-                notice(r,f"{p['name']} desconectou (pode reconectar).")
+                r=ROOMS[p['room']]
+                if r['mode']=='training':
+                    # Fechar a aba ou perder o WebSocket também encerra o treino:
+                    # diferentemente das salas humanas, não há reconexão a robôs.
+                    ROOMS.pop(r['code'],None)
+                    r['pot_cents']=0
+                    r['pending']=None
+                    for member in r['players']:
+                        member['room']=None
+                        member['hand']=[]
+                        member['media']=False
+                else:
+                    sync(r)
+                    send_room(r,'media_peer',id=p['id'],ready=False)
+                    notice(r,f"{p['name']} desconectou (pode reconectar).")
     return ws
 
 async def index(request):return web.FileResponse(ROOT/'index.html')
