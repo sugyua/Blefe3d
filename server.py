@@ -325,7 +325,19 @@ def bots_schedule(room):
         if not r or r['winner'] or r['turn']!=pid:return
         bot=player_by_id(r,pid)
         if r['pending']:
-            resolve(r,bot,random.random()<.32);return
+            if r['pending']['claim'] in ('draw2','draw4'):
+                stack_cards=[c for c in bot['hand'] if c['rank'] in ('draw2','draw4')]
+                if stack_cards and random.random()<.72:
+                    c=random.choice(stack_cards)
+                    play(r,bot,[c['id']],c['rank'],random.choice(COLORS))
+                elif bot['hand'] and random.random()<.12:
+                    c=random.choice(bot['hand'])
+                    play(r,bot,[c['id']],random.choice(('draw2','draw4')),random.choice(COLORS))
+                else:
+                    resolve(r,bot,random.random()<.26)
+            else:
+                resolve(r,bot,random.random()<.32)
+            return
         cards=bot['hand']
         playable=[c for c in cards if c['color']=='wild' or c['color']==r['color'] or (not r.get('hidden_top') and c['rank']==r['top']['rank'])]
         actions=[c for c in cards if c['rank'] in ACTIONS]
