@@ -50,7 +50,7 @@ def info(room):
     pending=room['pending']
     return {'code':room['code'],'host':room['host'],'started':room['started'],'mode':room['mode'],
     'players':[{'id':p['id'],'name':p['name'],'bot':p['bot'],'connected':p.get('ws') is not None and not p['ws'].closed if p.get('ws') else p['bot'],'cards':len(p['hand']),'strikes':0,'out':p['out'],'media':p.get('media',False)} for p in room['players']],
-    'turn':room['turn'],'color':room['color'],'top':room['top'],'direction':room['direction'],
+    'turn':room['turn'],'color':room['color'],'top':({'rank':'hidden','color':room['color']} if room.get('hidden_top') else room['top']),'direction':room['direction'],
     'pending':{'player':pending['player'],'claim':pending['claim'],'color':pending['color']} if pending else None,
     'last':room['last'],'winner':room.get('winner'),'deck_count':len(room['deck'])}
 
@@ -65,7 +65,7 @@ def notice(room,msg):
 def make_room(player, mode):
     code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
     while code in ROOMS: code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
-    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'pending':None,'last':None,'winner':None,'created':time.time()}
+    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'hidden_top':False,'pending':None,'last':None,'winner':None,'created':time.time()}
     ROOMS[code]=room
     player['room']=code
     return room
@@ -92,7 +92,7 @@ def start(room):
     i=next(i for i,c in enumerate(room['deck']) if c['rank'].isdigit())
     card=room['deck'].pop(i)
     room.update(started=True,turn=random.choice(room['players'])['id'],color=card['color'],
-        top=card,discard=[card],pending=None,direction=1,last=None,winner=None)
+        top=card,discard=[card],pending=None,direction=1,hidden_top=False,last=None,winner=None)
     sync(room);notice(room,'Descarte por cor ou número; ações ficam ocultas e podem ser blefes!')
     bots_schedule(room)
     return True
@@ -114,6 +114,7 @@ def apply_action(room,actor,kind,newcolor):
     if kind=='reverse':room['direction']*=-1
     if kind in ('skip','draw2','draw4'):target=advance(room,target['id'])
     room['color']=newcolor
+    room['hidden_top']=True
     room['turn']=target['id']
     finalize(room,actor)
     sync(room);bots_schedule(room)
@@ -138,11 +139,11 @@ def play(room,p,ids,claim=None,newcolor=None):
         sync(room);bots_schedule(room)
         return None
     if card['rank'] in ACTIONS:return 'Cartas de ação precisam de declaração oculta.'
-    if card['color']!='wild' and card['color']!=room['color'] and card['rank']!=room['top']['rank']:
+    if card['color']!='wild' and card['color']!=room['color'] and (room.get('hidden_top') or card['rank']!=room['top']['rank']):
         return 'A carta deve corresponder à cor ou ao número.'
     if card['color']=='wild' and newcolor not in COLORS:return 'Escolha uma cor.'
     p['hand'].remove(card);room['discard'].append(card);room['top']=card
-    room['color']=newcolor if card['color']=='wild' else card['color']
+    room['color']=newcolor if card['color']=='wild' else card['color'];room['hidden_top']=False
     room['turn']=advance(room,p['id'])['id']
     room['last']=None
     notice(room,p['name']+' jogou '+card['rank']+'.')
@@ -156,7 +157,7 @@ def resolve(room,p,doubt):
     actual=q['card'];claim=q['claim']
     truthful=(actual['rank']==claim and (actual['color']==room['color'] or actual['color']=='wild'))
     room['pending']=None
-    room['discard'].append(actual);room['top']=actual
+    room['discard'].append(actual);room['top']=actual;room['hidden_top']=False
     room['last']={'accuser':p['name'],'accused':actor['name'],'lie':not truthful,
         'cards':[actual],'loser':actor['name'] if not truthful else p['name'],'out':False,
         'claim':claim,'accepted':not doubt}
@@ -205,7 +206,7 @@ def bots_schedule(room):
         if r['pending']:
             resolve(r,bot,random.random()<.32);return
         cards=bot['hand']
-        playable=[c for c in cards if c['color']=='wild' or c['color']==r['color'] or c['rank']==r['top']['rank']]
+        playable=[c for c in cards if c['color']=='wild' or c['color']==r['color'] or (not r.get('hidden_top') and c['rank']==r['top']['rank'])]
         actions=[c for c in cards if c['rank'] in ACTIONS]
         if actions and random.random()<.33:
             card=random.choice(actions)
