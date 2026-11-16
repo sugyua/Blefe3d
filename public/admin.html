@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#101827">
+<title>Blefe Color • Painel de acompanhamento</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:#0a101a;color:#e8efff}
+main{max-width:1240px;margin:auto;padding:25px 18px}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+h1{font-size:clamp(23px,4vw,35px);margin:0 0 4px}
+p{color:#a5b7ce}small{color:#93a9c3}
+button,input{font:inherit;border-radius:9px;border:1px solid #53647c;padding:11px 14px}
+button{background:#245d52;color:white;cursor:pointer;font-weight:700}
+input{background:#182438;color:white;max-width:400px;width:100%}
+label{display:block;font-size:12px;margin-bottom:6px}
+#login{max-width:510px;margin:45px auto;background:#162238;border:1px solid #394963;padding:25px;border-radius:16px}
+#login button{margin:12px 0 0}
+#status{font-size:13px;color:#8ce3b9}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(152px,1fr));gap:11px;margin:22px 0}
+.metric{border:1px solid #354764;border-radius:12px;background:#142138;padding:15px}
+.metric span{font-size:11px;letter-spacing:.5px;color:#b3c7dd}
+.metric strong{display:block;font-size:clamp(23px,3vw,32px);font-variant-numeric:tabular-nums;margin:7px 0;color:#ebf7ff}
+h2{font-size:20px;margin:18px 0 12px}
+.room{border:1px solid #40536d;background:#142236;border-radius:13px;padding:14px;margin-bottom:10px}
+.roomTop{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
+.roomCode{font-size:19px;font-weight:850;color:#f7db8c;letter-spacing:1px}
+.roomStats{display:flex;gap:9px;flex-wrap:wrap;margin:9px 0}
+.pill{background:#2b4058;color:#e5f0fd;padding:5px 9px;border-radius:30px;font-size:12px}
+.pill.live{color:#aaf4c5;background:#1e4b39}
+.players{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:7px}
+.player{display:flex;justify-content:space-between;gap:12px;background:#20314a;border-radius:8px;padding:9px;font-size:12px}
+.player span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.player strong{white-space:nowrap}
+.alert{color:#ffb8a0}
+#empty{padding:23px;text-align:center;background:#162339;border-radius:12px}
+#refresh{background:#293f5c}
+#logout{background:#5c3044}
+#adminContent[hidden],#login[hidden],#empty[hidden]{display:none}
+.footer{margin-top:25px;font-size:12px;color:#8fa4bb}
+</style>
+</head><body><main>
+<header><div><h1>Blefe Color • Monitoramento</h1><small>Salas, jogadores conectados e apostas fictícias — leitura somente</small></div>
+<div><span id="status">Acesso restrito</span> <button id="refresh" hidden>Atualizar</button> <button id="logout" hidden>Sair</button></div></header>
+<section id="login">
+<h2>Acesso do administrador</h2>
+<p>Informe o código administrativo configurado no Render. Este painel não mostra cartas ocultas, dados de pagamento ou informações privadas das câmeras.</p>
+<label for="token">Código de acesso</label>
+<input id="token" type="password" autocomplete="off" placeholder="Código administrativo">
+<button id="signIn">Acessar painel</button><p id="loginError" class="alert" role="alert"></p>
+</section>
+<section id="adminContent" hidden>
+<div id="cards" class="cards"></div>
+<div><h2>Salas e partidas</h2><div id="rooms"></div><div id="empty" hidden>Nenhuma sala aberta ou em andamento.</div></div>
+<p class="footer">Líder provisório = participante com menos cartas. Valores em R$ de teste, sem dinheiro real. Os dados de conexões e picos são reiniciados quando o processo reinicia. Atualização a cada 5 segundos enquanto a aba estiver aberta.</p>
+</section></main>
+<script>
+(()=>{'use strict';
+const $=id=>document.getElementById(id);
+let key=sessionStorage.getItem('blefe_admin_token')||'',timer=null;
+const money=cents=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format((cents||0)/100);
+const cells=[['connections','Conexões WebSocket'],['connected_players','Jogadores conectados'],['peak_connections','Pico simultâneo'],['rooms','Salas totais'],['public_rooms','Salas públicas'],['matches_live','Partidas em andamento'],['matches_started','Partidas iniciadas'],['memory_peak_mb','Memória máxima (MB)'],['messages_received','Mensagens WebSocket'],['registered_sessions','Sessões criadas']];
+function el(tag,cl,text){const node=document.createElement(tag);if(cl)node.className=cl;if(text!==undefined)node.textContent=String(text);return node}
+function metric(k,label,value){const node=el('div','metric');node.append(el('span','',label),el('strong','',value));return node}
+function roomCard(room){
+ const root=el('article','room'),top=el('div','roomTop'),info=el('div','roomStats'),members=el('div','players');
+ top.append(el('span','roomCode',room.code),el('span','pill'+(room.status==='em andamento'?' live':''),room.status.toUpperCase()));
+ info.append(el('span','pill',room.visibility==='public'?'Pública':'Privada'),
+             el('span','pill',room.players_count+'/4 jogadores'),
+             el('span','pill','Entrada: '+money(room.stake_cents)+' de teste'),
+             el('span','pill','Pote: '+money(room.pot_cents)+' fictício'),
+             el('span','pill','Rodada '+room.round));
+ const current=room.winner?'Vencedor: '+room.winner:room.leader?'Líder provisório: '+room.leader:'Aguardando começo';
+ root.append(top,el('p','',room.host+' — '+current),info);
+ for(const p of room.players){
+   const node=el('div','player');
+   node.append(el('span','',p.name+(p.bot?' [robô]':'')+(p.turn?' • VEZ':'')),el('strong','',(p.spectator?'Espectador':p.cards+' cartas')+(!p.connected?' • offline':'')));
+   members.append(node);
+ }
+ root.append(members);return root
+}
+async function refresh(){
+ if(!key)return;
+ try{
+  const response=await fetch('/api/admin/metrics',{headers:{Authorization:'Bearer '+key},cache:'no-store'});
+  if(response.status===401){throw new Error('Código inválido ou acesso negado.')}
+  if(!response.ok)throw new Error('Servidor indisponível ('+response.status+').');
+  const data=await response.json();
+  $('login').hidden=true;$('adminContent').hidden=false;$('refresh').hidden=false;$('logout').hidden=false;
+  const ms=data.server;
+  const metrics=$('cards');metrics.replaceChildren();
+  for(const [k,label] of cells)metrics.append(metric(k,label,ms[k]??'—'));
+  const rooms=$('rooms');rooms.replaceChildren();
+  data.rooms.sort((a,b)=>(a.status==='em andamento'?-1:1)-(b.status==='em andamento'?-1:1));
+  data.rooms.forEach(r=>rooms.append(roomCard(r)));
+  $('empty').hidden=data.rooms.length!==0;
+  $('status').textContent='Online • '+new Date().toLocaleTimeString('pt-BR');
+  $('loginError').textContent='';
+ }catch(e){
+  $('status').textContent='Erro de atualização';
+  $('loginError').textContent=e.message;
+  if(e.message.includes('Código inválido')){
+   clearInterval(timer);timer=null;key='';sessionStorage.removeItem('blefe_admin_token');
+   $('login').hidden=false;$('adminContent').hidden=true;$('refresh').hidden=true;$('logout').hidden=true;
+  }
+ }
+}
+function start(){if(timer)clearInterval(timer);timer=setInterval(()=>{if(!document.hidden)refresh()},5000);refresh()}
+$('signIn').onclick=()=>{key=$('token').value.trim();if(!key)return;$('token').value='';sessionStorage.setItem('blefe_admin_token',key);start()};
+$('token').addEventListener('keydown',e=>{if(e.key==='Enter')$('signIn').click()});
+$('refresh').onclick=refresh;
+$('logout').onclick=()=>{key='';sessionStorage.removeItem('blefe_admin_token');clearInterval(timer);timer=null;$('login').hidden=false;$('adminContent').hidden=true;$('refresh').hidden=true;$('logout').hidden=true;$('status').textContent='Acesso restrito'};
+if(key)start();
+})();
+</script>
+</body></html>
