@@ -1,6 +1,6 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#111827"><title>Blefe Color — Testes</title><link rel="stylesheet" href="/static/style.css?v=20261116c"></head><body>
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#111827"><title>Blefe Color — Testes</title><link rel="stylesheet" href="/static/style.css?v=20261116d"></head><body>
 <div id="app">
- <section id="lobby" class="overlay"><div class="welcome"><div class="brand">♠ BLEFE <span>COLOR</span></div><p>Jogue, desconfie e descubra quem está mentindo.</p><label>Seu nome<input id="nickname" maxlength="20" placeholder="Nome do jogador"></label><div class="stack"><button id="training" class="primary">Treinar com 3 adversários virtuais</button><button id="create">Criar sala privada</button><div class="join"><input id="roomcode" maxlength="6" placeholder="CÓDIGO DA SALA"><button id="join">Entrar</button></div></div><small>Versão 0.2 • Testes • Sem dinheiro real</small></div></section>
+ <section id="lobby" class="overlay"><div class="welcome"><div class="brand">♠ BLEFE <span>COLOR</span></div><p>Jogue, desconfie e descubra quem está mentindo.</p><label>Seu nome<input id="nickname" maxlength="20" placeholder="Nome do jogador"></label><div class="stack"><button id="training" class="primary">Treinar com 3 adversários virtuais</button><button id="create">Criar sala privada</button><div class="join"><input id="roomcode" maxlength="6" placeholder="CÓDIGO DA SALA"><button id="join">Entrar</button></div></div><small>Versão 0.3 • Testes • Sem dinheiro real</small></div></section>
  <section id="game" hidden>
   <header><div><strong>BLEFE COLOR</strong><small id="roomLabel"></small></div><div class="headActions"><span id="connection">● Conectando</span><button id="helpBtn" title="Regras">?</button><button id="leaveBtn" title="Sair">✕</button></div></header>
   <div id="topArea"><div id="turnBanner">Aguardando jogadores...</div><div id="peerCameras" class="peerCameras"></div><div class="mediaButtons"><button id="voiceBtn">🎙 Ativar voz</button><button id="camBtn">📷 Câmera</button><button id="micBtn" disabled>🔊 Microfone ligado</button></div></div>
@@ -22,5 +22,24 @@
     <button id="closeReplay" class="primary">Continuar</button>
   </div>
 </div>
+ <div id="victory" class="modal victoryOverlay" hidden>
+  <div class="victoryConfetti" id="victoryConfetti" aria-hidden="true"></div>
+  <div class="modalInner victoryPanel" role="dialog" aria-modal="true" aria-labelledby="victoryTitle">
+    <div id="victoryEmblem" class="victoryEmblem" aria-hidden="true">🏆</div>
+    <div id="victoryEyebrow" class="victoryEyebrow">FIM DE PARTIDA</div>
+    <h2 id="victoryTitle">Temos um vencedor!</h2>
+    <p id="victoryMessage" class="victoryMessage"></p>
+    <div class="victoryStandings">
+      <div class="standingsHeader">RESULTADO DA MESA</div>
+      <div id="victoryPlayers" class="victoryPlayers"></div>
+    </div>
+    <button id="victoryRematch" class="primary victoryPrimary">↻ Jogar revanche</button>
+    <p id="victoryWaiting" class="victoryWaiting" hidden>Aguardando o anfitrião iniciar uma revanche...</p>
+    <div class="victorySecondary">
+      <button id="victoryClose">Ver mesa</button>
+      <button id="victoryLeave">Sair da sala</button>
+    </div>
+  </div>
+ </div>
  <div id="guide" class="modal" hidden><div class="modalInner"><h2>Como jogar</h2><p>1. Cada jogador recebe sete cartas. Combine a cor ou o número da carta da mesa.</p><p>2. As cartas de ação são jogadas viradas para baixo. Você declara BLOQUEIO, +2, +4 ou INVERTER e pode blefar.</p><p>3. O próximo jogador decide se acredita ou desconfia da ação oculta.</p><p>4. Se desconfiar errado, você compra o valor da ação declarada e mais uma carta. Se pegar o blefe, o autor compra duas.</p><p>5. Vence quem ficar sem cartas. Você pode comprar uma carta e passar a vez.</p><button id="closeGuide">Entendi</button></div></div>
-</div><script src="/static/app.js?v=20261116c" defer></script></body></html>
+</div><script src="/static/app.js?v=20261116d" defer></script></body></html>
