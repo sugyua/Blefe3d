@@ -52,7 +52,7 @@ def info(room):
     'players':[{'id':p['id'],'name':p['name'],'bot':p['bot'],'connected':p.get('ws') is not None and not p['ws'].closed if p.get('ws') else p['bot'],'cards':len(p['hand']),'strikes':0,'out':p['out'],'media':p.get('media',False)} for p in room['players']],
     'turn':room['turn'],'color':room['color'],'top':({'rank':'hidden','color':room['color']} if room.get('hidden_top') else room['top']),'direction':room['direction'],
     'pending':{'player':pending['player'],'claim':pending['claim'],'color':pending['color']} if pending else None,
-    'last':room['last'],'winner':room.get('winner'),'deck_count':len(room['deck']), 'move':room.get('move')}
+    'last':room['last'],'winner':room.get('winner'),'deck_count':len(room['deck']), 'move':room.get('move'),'round':room.get('round',0)}
 
 def sync(room):
     payload=info(room)
@@ -65,7 +65,7 @@ def notice(room,msg):
 def make_room(player, mode):
     code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
     while code in ROOMS: code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
-    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'hidden_top':False,'pending':None,'last':None,'move':None,'move_serial':0,'winner':None,'created':time.time()}
+    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'hidden_top':False,'pending':None,'last':None,'move':None,'move_serial':0,'round':0,'winner':None,'created':time.time()}
     ROOMS[code]=room
     player['room']=code
     return room
@@ -85,6 +85,7 @@ def next_player(room,pid):
 
 def start(room):
     if len(room['players'])<2:return False
+    room['round']=room.get('round',0)+1
     room['deck']=build_deck()
     for p in room['players']:
         p['hand']=[];p['strikes']=0;p['out']=False
@@ -276,6 +277,15 @@ async def websocket(request):
             elif t=='start':
                 if not room or room['host']!=p['id']: error(ws,'Somente o anfitrião pode iniciar.');continue
                 if not start(room): error(ws,'É preciso ter pelo menos dois jogadores.')
+            elif t=='restart':
+                if not room or room['host']!=p['id']:
+                    error(ws,'Somente o anfitrião pode iniciar uma revanche.');continue
+                if not room['winner']:
+                    error(ws,'A partida ainda não terminou.');continue
+                online=sum(1 for x in room['players'] if x['bot'] or (x.get('ws') and not x['ws'].closed))
+                if online<2:
+                    error(ws,'Aguardando mais jogadores para a revanche.');continue
+                start(room)
             elif t=='play':
                 if not room or not room['started']: error(ws,'Partida não iniciada.');continue
                 res=play(room,p,d.get('cards'),d.get('claim'),d.get('color'))
