@@ -27,6 +27,7 @@ $('play').onclick=()=>{if(!state.selected.size)return;const c=state.hand.find(c=
 $('challenge').onclick=()=>send('challenge');
 $('accept').onclick=()=>send('accept');
 $('draw').onclick=()=>send('draw');
+$('bluff').onclick=()=>{if(!state.selected.size)return;state.claim=null;document.querySelector('.claimGrid').hidden=false;$('colors').hidden=true;$('claimPanel').hidden=false};
 $('whatsappInvite').onclick=()=>{const code=state.room?.code||'';const link=location.origin+'/?sala='+code;const message='Vem jogar Blefe Color comigo! Sala: '+code+'\\n'+link;window.open('https://wa.me/?text='+encodeURIComponent(message),'_blank','noopener,noreferrer')};
 $('cancelClaim').onclick=()=>{$('claimPanel').hidden=true};
 for(const el of document.querySelectorAll('[data-color]')){el.onclick=()=>{state.selectedColor=el.dataset.color;for(const b of document.querySelectorAll('[data-color]'))b.style.outline=b===el?'3px solid white':'';if(state.claim||document.querySelector('.claimGrid').hidden){send('play',{cards:[...state.selected],claim:state.claim,color:state.selectedColor});$('claimPanel').hidden=true;state.claim=null;document.querySelector('.claimGrid').hidden=false}}}
@@ -47,16 +48,17 @@ for(const c of state.hand){const el=makeCard(c);el.classList.toggle('selected',s
 $('challenge').disabled=!myturn||!s.pending;
 $('accept').disabled=!myturn||!s.pending;
 $('draw').disabled=!myturn||!!s.pending;
+$('bluff').disabled=!myturn||!state.selected.size||!!s.pending;
 $('play').disabled=!myturn||!state.selected.size||!!s.pending;
 $('play').textContent='JOGAR CARTA';
 $('turnHint').textContent=winner?'Fim da partida. Crie outra sala para revanche.':!s.started?'Aguardando o anfitrião iniciar.':myturn?(s.pending?'Acredite na ação ou duvide da declaração.':'Selecione uma carta, ou compre uma e passe.'):'Aguardando '+(actor?.name||'jogador')+'...';
 $('waitingTitle').textContent='Sala '+s.code;$('waitingList').textContent=s.players.map(x=>x.name+(x.id===s.host?' ★':'')).join('\\n')+'\\n'+s.players.length+'/4 jogadores';
 $('startBtn').hidden=s.host!==state.id;$('startBtn').disabled=s.players.length<2;
 renderPeers()}
-function renderHandOnly(){for(const [i,el] of [...$('hand').children].entries())el.classList.toggle('selected',state.selected.has(state.hand[i].id));$('play').disabled=state.room?.turn!==state.id||!state.selected.size||!!state.room?.pending;$('play').textContent='JOGAR CARTA'}
+function renderHandOnly(){for(const [i,el] of [...$('hand').children].entries())el.classList.toggle('selected',state.selected.has(state.hand[i].id));$('play').disabled=state.room?.turn!==state.id||!state.selected.size||!!state.room?.pending;$('bluff').disabled=$('play').disabled;$('play').textContent='JOGAR CARTA'}
 function renderPeers(){const parent=$('peerCameras'),s=state.room;if(!s)return;
 const others=s.players.filter(p=>p.id!==state.id);
-const slots=[...others];slots.push(s.players.find(p=>p.id===state.id)||{id:state.id,name:'Você',bot:false,connected:true,cards:0});
+const slots=[...others];while(slots.length<3)slots.push(null);slots.push(s.players.find(p=>p.id===state.id)||{id:state.id,name:'Você',bot:false,connected:true,cards:0});
 parent.replaceChildren();
 for(let i=0;i<4;i++){
 const p=slots[i];const box=document.createElement('div');box.className='peer';
