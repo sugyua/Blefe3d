@@ -172,3 +172,59 @@
 @media(prefers-reduced-motion:reduce){
   .victoryConfetti span,.victoryPanel,.victoryEmblem,.peer .cardsCountBadge.isLow{animation:none!important}
 }
+
+
+/* Carteira fictícia e opções de revanche — versão 0.5 */
+.overlay{overflow-y:auto;align-items:safe center}
+.welcome{margin:auto}
+.lobbyBalance{display:flex;flex-direction:column;gap:2px;border:1px solid #3f916f;background:linear-gradient(115deg,#1d3c37,#1a2734);border-radius:12px;padding:11px 14px;margin:15px 0 10px}
+.lobbyBalance>span{font-size:10px;letter-spacing:1.3px;color:#a7e4c9;font-weight:800}
+.lobbyBalance>strong{font-size:30px;color:#f9f5df;font-variant-numeric:tabular-nums}
+.lobbyBalance>small{font-size:11px;color:#bccdc8}
+.lobbyTools{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.lobbyTools button{background:#2b3d50;font-size:13px;padding:11px 6px}
+#openWallet:before{content:'▣ ';color:#a9ebba}
+#openDonation:before{content:'♥ ';color:#ffc1a9}
+.headActions{gap:5px}
+.gameWallet{font-size:11px;padding:6px 7px;color:#b8ffd1;background:#1c3b2f;border:1px solid #2c9370;white-space:nowrap;font-variant-numeric:tabular-nums}
+.moneyModal{max-height:83dvh;overflow-y:auto;text-align:center}
+.moneyEyebrow{font-size:11px;color:#bce0ca;letter-spacing:2px;font-weight:900;margin-bottom:7px}
+.moneyModal h2{font-size:24px;margin:5px 0 10px}
+.walletTypeGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.walletType{display:flex;flex-direction:column;align-items:center;gap:4px;border-radius:12px;padding:12px 8px;text-align:center}
+.walletType>span{font-size:10px;font-weight:900;letter-spacing:.6px}
+.walletType>strong{font-size:clamp(19px,5vw,27px);font-variant-numeric:tabular-nums;white-space:nowrap}
+.walletType small{font-size:10px;line-height:1.3;color:#c3d0dc}
+.testWallet{background:#173528;border:1px solid #4c886b;color:#a2f0c8}
+.realWallet{background:#292c36;border:1px dashed #69727e;color:#b7bec9}
+.moneyModal .walletDisclaimer{text-align:left;font-size:12px;line-height:1.5;color:#d4e1ef}
+.moneyModal button{display:block;width:100%;margin-top:8px}
+.walletFootnote{font-size:11px!important;color:#aebfd0;line-height:1.4!important;margin:9px 0!important}
+.walletTransactions{display:flex;flex-direction:column;gap:6px;margin:10px 0;max-height:180px;overflow:auto}
+.walletTransaction{display:flex;justify-content:space-between;gap:10px;text-align:left;background:#122031;border-radius:8px;padding:9px;font-size:11px}
+.walletTransaction strong{white-space:nowrap;font-variant-numeric:tabular-nums}
+.walletTransaction strong.positive{color:#8ee8b3}
+.walletTransaction strong.negative{color:#ffc5a7}
+.donationSetup{padding:14px;border-radius:11px;border:1px dashed #e5b46d;background:#332a20;color:#ffddb7;font-size:13px;line-height:1.5}
+#donationKeyPanel{background:#182836;border:1px solid #5b7281;border-radius:11px;padding:12px;margin-top:9px}
+#donationKeyPanel label{font-weight:900;font-size:12px;display:block;color:#f0d3a8}
+#donationKeyPanel code{display:block;word-break:break-all;padding:9px;color:#a4f5cb;font-size:13px}
+.rematchPanel{position:relative;background:#101c2bc4;border:1px solid #566981;border-radius:13px;padding:13px 12px;margin:12px 0}
+.rematchPanel h3{font-size:16px;margin:0 0 5px;color:#f6df9b;font-weight:900}
+.rematchPanel .simulatedNotice{font-size:11px!important;line-height:1.4!important;color:#bacbe0;margin:0 0 12px!important}
+#rematchHostControls label{display:flex;gap:6px;align-items:center;justify-content:space-between;font-weight:700;font-size:12px;color:#dbe6f5;margin:0 0 7px}
+#rematchHostControls label strong{color:#ffe4a1;font-size:13px;white-space:nowrap}
+#rematchAmount{display:block;appearance:auto;-webkit-appearance:auto;padding:0;width:100%;height:28px;min-width:0;accent-color:#51d6a8;background:transparent;border:0;margin:2px 0}
+.stakeRange{display:flex;justify-content:space-between;font-size:10px;color:#9cacc1;margin:0 0 11px}
+.rematchProposedValue{font-size:16px!important;font-weight:900;color:#ffdf8e!important;margin:7px 0!important}
+.rematchAcceptance{display:flex;flex-direction:column;gap:4px;margin:8px 0 10px}
+.rematchVote{font-size:12px;color:#e5b9a8;background:#372b33;border-radius:7px;padding:6px 8px;text-align:left}
+.rematchVote.accepted{color:#a9f2c4;background:#183b30}
+.victorySecondary{grid-template-columns:repeat(3,minmax(0,1fr))}
+.victorySecondary button{font-size:11px;padding:8px 3px;min-width:0}
+.victoryPanel{max-height:88dvh!important;overflow-y:auto!important}
+@media(max-width:380px){
+ .headActions .gameWallet{font-size:10px;padding:5px 3px}
+ .headActions #connection{font-size:9px}
+ .victoryPanel{padding:13px 13px!important}
+}
