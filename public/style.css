@@ -65,3 +65,110 @@
   .flipCard{transition-duration:.01ms}
   .verdictPanel,.cinematic.correct #replayTitle,.cinematic.incorrect #replayTitle,.tableCards.landed,#tableTarget.hiddenFlash{animation:none!important}
 }
+
+
+/* Blefe Color 0.3 — contagem de cartas e resultado de partida */
+.peer .cardsCountBadge{
+  position:absolute;z-index:4;left:5px;top:5px;
+  display:flex;align-items:center;gap:5px;
+  max-width:calc(100% - 10px);
+  padding:4px 6px;border-radius:7px;
+  background:#0a1325e8;border:1px solid #e7edff80;
+  color:#fff;font-size:12px;line-height:1;font-weight:900;
+  box-shadow:0 2px 8px #0008;
+  font-variant-numeric:tabular-nums;
+  pointer-events:none;
+}
+.peer .cardsCountBadge .cardsIcon{font-size:12px;line-height:1}
+.peer .cardsCountBadge strong{font-size:13px;line-height:1}
+.peer .cardsCountBadge.isLow{
+  background:#9e2935;border-color:#ffc5ce;color:#fff;
+  animation:lowCardsPulse 1.8s ease-in-out infinite;
+}
+@keyframes lowCardsPulse{0%,100%{box-shadow:0 2px 7px #0007}50%{box-shadow:0 0 0 3px #ffd1d555}}
+.victoryOverlay{
+  z-index:44;
+  background:radial-gradient(circle at 50% 32%,#23425ddc,#080e1cf0 70%);
+}
+.victoryPanel{
+  position:relative;z-index:2;width:min(94vw,420px);
+  border:2px solid #cfb36b!important;
+  background:linear-gradient(150deg,#27364f 0%,#121c2d 58%,#101522 100%)!important;
+  box-shadow:0 0 30px #d7a44f3d,0 26px 65px #000c!important;
+  overflow:hidden;padding:20px 20px 22px!important;
+  animation:victoryEnter .65s cubic-bezier(.14,.9,.21,1.1) both;
+}
+.victoryPanel:before{
+  content:"";position:absolute;inset:-70px;pointer-events:none;
+  background:radial-gradient(circle at 50% 15%,#f2ce7850,transparent 41%);
+}
+.victoryEmblem{
+  position:relative;display:grid;place-items:center;
+  width:90px;height:90px;margin:0 auto 8px;
+  border:2px solid #e6c375;border-radius:50%;
+  background:radial-gradient(circle at 38% 26%,#837039,#342817 84%);
+  box-shadow:0 0 28px #e3b7537d,inset 0 2px 9px #ffe7a03a;
+  font-size:50px;animation:trophyBounce 1.1s ease-out both;
+}
+.victoryOverlay.lost .victoryPanel{border-color:#7c90ae!important;box-shadow:0 24px 58px #000c!important}
+.victoryOverlay.lost .victoryEmblem{border-color:#8ba4c3;background:radial-gradient(circle,#425c78,#212b40);box-shadow:0 0 22px #6a8fbe45}
+.victoryEyebrow{position:relative;color:#edce82;letter-spacing:2.1px;font-size:11px;font-weight:900}
+.victoryPanel h2{
+  position:relative;margin:5px 0 7px;
+  font-size:clamp(27px,7vw,37px);line-height:1.08;
+  font-weight:1000;letter-spacing:-1.2px;color:#fff4c8;
+  text-shadow:0 3px 18px #e4b6535a;
+}
+.victoryOverlay.lost .victoryPanel h2{color:#e8eeff;text-shadow:none}
+.victoryMessage{position:relative;color:#dbe5f2;font-size:14px!important;margin:0 0 14px!important;line-height:1.45!important}
+.victoryStandings{
+  position:relative;border:1px solid #59677d;border-radius:13px;
+  background:#0c1523b8;padding:10px 11px;margin:8px 0 16px;
+}
+.standingsHeader{font-size:10px;color:#91a7c3;font-weight:900;letter-spacing:1.7px;text-align:left;margin:0 0 8px}
+.victoryPlayers{display:flex;flex-direction:column;gap:4px}
+.victoryPlayer{
+  display:grid;grid-template-columns:27px minmax(0,1fr) auto;
+  gap:7px;align-items:center;padding:7px 9px;
+  background:#273449;border-radius:9px;
+  font-size:13px;text-align:left;
+}
+.victoryPlayer.winner{background:#67501e;border:1px solid #cda350}
+.victoryPlayer .place{font-size:17px}
+.victoryPlayer .playerName{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.victoryPlayer .playerCards{font-variant-numeric:tabular-nums;color:#e9d6ad;font-size:12px;font-weight:850;white-space:nowrap}
+.victoryPanel button{position:relative;min-height:43px}
+.victoryPrimary{display:block;width:100%;font-size:15px;margin-bottom:8px;background:linear-gradient(125deg,#1caa79,#176c56)!important;border-color:#89ebbe!important;box-shadow:0 5px 20px #068a5950}
+.victorySecondary{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.victorySecondary button{font-size:12px;background:#29374b}
+.victoryWaiting{font-size:12px!important;color:#c6d3e3;margin:0 0 13px!important}
+.victoryConfetti{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:1}
+.victoryConfetti span{
+  position:absolute;top:-12vh;width:8px;height:13px;
+  opacity:0;transform:rotate(0);background:var(--confetti,#edcb73);
+  animation:confettiFall var(--duration,3.3s) var(--delay,0s) linear forwards;
+}
+@keyframes confettiFall{
+  0%{transform:translate3d(0,-15px,0) rotate(0deg);opacity:1}
+  90%{opacity:.9}
+  100%{transform:translate3d(var(--sway,22px),115vh,0) rotate(790deg);opacity:0}
+}
+@keyframes victoryEnter{
+  0%{opacity:0;transform:scale(.76) translateY(35px)}
+  70%{opacity:1;transform:scale(1.035) translateY(-3px)}
+  100%{transform:scale(1) translateY(0)}
+}
+@keyframes trophyBounce{
+  0%{transform:scale(.5) rotate(-16deg)}
+  55%{transform:scale(1.18) rotate(8deg)}
+  100%{transform:scale(1) rotate(0deg)}
+}
+@media(max-height:690px){
+  .victoryPanel{padding:13px 16px!important}
+  .victoryEmblem{width:61px;height:61px;font-size:35px}
+  .victoryStandings{margin:6px 0 10px}
+  .victoryPlayer{padding:5px 8px}
+}
+@media(prefers-reduced-motion:reduce){
+  .victoryConfetti span,.victoryPanel,.victoryEmblem,.peer .cardsCountBadge.isLow{animation:none!important}
+}
