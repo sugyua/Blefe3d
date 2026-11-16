@@ -10,7 +10,7 @@ function send(type,data={}){if(state.ws?.readyState===1)state.ws.send(JSON.strin
 function connection(){const proto=location.protocol==='https:'?'wss':'ws';const ws=new WebSocket(proto+'://'+location.host+'/ws');state.ws=ws;$('connection').textContent='● Conectando';
 ws.onopen=()=>{$('connection').textContent='● Conectado';send('hello',{name:state.name||'Jogador',token:state.token})};
 ws.onmessage=async e=>{let m;try{m=JSON.parse(e.data)}catch{return}
-if(m.type==='welcome'){state.id=m.id;state.token=m.id;localStorage.setItem('blefe_token',m.id);if(m.room){$('lobby').hidden=true;$('game').hidden=false;if(state.voiceReady)send('media_ready',{ready:true})}}
+if(m.type==='welcome'){state.id=m.id;state.token=m.id;localStorage.setItem('blefe_token',m.id);if(m.room){$('lobby').hidden=true;$('game').hidden=false;if(state.room)render();if(state.voiceReady)send('media_ready',{ready:true})}}
 else if(m.type==='state'){state.room=m.state;state.hand=m.hand||[];state.selected=new Set([...state.selected].filter(x=>state.hand.some(c=>c.id===x)));render();if(m.state.move&&m.state.move.id!==state.lastAnimatedMove){state.lastAnimatedMove=m.state.move.id;animateMove(m.state.move)}}
 else if(m.type==='notice'){$('logline').textContent=m.message}
 else if(m.type==='error')toast(m.message)
@@ -84,7 +84,7 @@ function renderPeers(){
     const label=box.querySelector('.tag'),avatar=box.querySelector('.avatar');
     label.textContent=p?(p.id===state.id?'VOCÊ':p.name)+(p.connected?'':' • FORA')+(s.turn===p.id?' • VEZ':''):'AGUARDANDO';
     const stream=p?.id===state.id?state.previewStream:state.remoteStreams.get(p?.id);
-    const visibleTrack=stream?.getVideoTracks()?.find(track=>track.readyState==='live'&&!track.muted);
+    const visibleTrack=stream?.getVideoTracks()?.find(track=>track.readyState==='live');
     let video=box.querySelector('video');
     if(visibleTrack){
       if(!video){
@@ -205,12 +205,12 @@ $('micBtn').onclick=()=>{
 async function toggleCamera(){
   if(!state.voiceReady){toast('Ative a voz antes de ligar a câmera.');return}
   if(state.camEnabled){
-    const track=state.stream?.getVideoTracks()?.[0];
+    state.camEnabled=false;
     for(const pc of state.pcs.values()){
       if(pc._videoSender){try{await pc._videoSender.replaceTrack(null)}catch(_){}}
     }
-    if(track){state.stream.removeTrack(track);track.stop()}
-    state.previewStream=null;state.camEnabled=false;
+    for(const track of state.stream?.getVideoTracks()||[]){state.stream.removeTrack(track);track.stop()}
+    state.previewStream=null;
     $('camBtn').textContent='📷 Ligar câmera';
     renderPeers();
     return;
@@ -228,9 +228,11 @@ async function toggleCamera(){
     state.stream.addTrack(track);
     state.previewStream=new MediaStream([track]);
     state.camEnabled=true;
+    track.onunmute=()=>renderPeers();
     track.onended=()=>{
       if(!state.camEnabled||state.previewStream?.getVideoTracks()?.[0]!==track)return;
       state.camEnabled=false;state.previewStream=null;
+      state.stream?.removeTrack(track);
       $('camBtn').textContent='↻ Retomar câmera';renderPeers();
       toast('A câmera foi interrompida. Toque em Retomar câmera.');
     };
