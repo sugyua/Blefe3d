@@ -12,7 +12,7 @@ DONATION_PIX_OWNER = os.getenv('DONATION_PIX_OWNER','').strip()
 
 def wallet_public(player):
     """Never combine simulated credits and real-money fields."""
-    test_balance=player.get('balance_cents',TEST_START_BALANCE_CENTS)
+    test_balance=player.get('test_balance_cents',TEST_START_BALANCE_CENTS)
     return {
         'balance_cents':test_balance,  # Backward-compatible, always simulated.
         'test':{'balance_cents':test_balance,'currency':'BRL_TEST','withdrawable':False,
@@ -28,7 +28,7 @@ def send_wallet(player):
 def wallet_change(player,delta,description,wallet_type='test'):
     if wallet_type!='test':
         raise ValueError('Carteira real indisponível; saldos nunca podem ser misturados.')
-    player['balance_cents']=player.get('balance_cents',TEST_START_BALANCE_CENTS)+delta
+    player['test_balance_cents']=player.get('test_balance_cents',TEST_START_BALANCE_CENTS)+delta
     player.setdefault('wallet_history',[]).append(
         {'amount_cents':delta,'description':description,'at':int(time.time())})
     send_wallet(player)
@@ -111,7 +111,7 @@ def try_start_rematch(room):
     if len(participants)<2:return False
     if not all(p['id'] in offer['accepted'] for p in participants):return False
     amount=offer['amount']
-    if any(p.get('balance_cents',0)<amount for p in participants):
+    if any(p.get('test_balance_cents',0)<amount for p in participants):
         room['proposal']=None
         notice(room,'A revanche foi cancelada: um participante não tem saldo de teste suficiente.')
         sync(room)
@@ -126,7 +126,7 @@ def next_player(room,pid):
     a=room['players']; idx=next((i for i,p in enumerate(a) if p['id']==pid),-1)
     for j in range(1,len(a)+1):
         p=a[(idx+j)%len(a)]
-        if not p['out']: return p
+        if not p['out'] and not p.get('spectator',False): return p
     return None
 
 def start(room):
@@ -134,7 +134,7 @@ def start(room):
     participants=eligible(room)
     if len(participants)<2:return False
     amount=room.get('stake',0)
-    if amount and any(p.get('balance_cents',0)<amount for p in participants):return False
+    if amount and any(p.get('test_balance_cents',0)<amount for p in participants):return False
     room['pot_cents']=amount*len(participants)
     if amount:
         for p in participants:wallet_change(p,-amount,'Entrada na rodada de teste')
@@ -286,7 +286,7 @@ def bots_schedule(room):
 
 def create_player(name,ws,token=None):
     pid=token or secrets.token_urlsafe(18)
-    return {'id':pid,'name':str(name).strip()[:20] or 'Jogador','ws':ws,'hand':[],'strikes':0,'out':False,'spectator':False,'bot':False,'room':None,'media':False,'balance_cents':TEST_START_BALANCE_CENTS,'wallet_history':[{'amount_cents':TEST_START_BALANCE_CENTS,'description':'Bônus único de boas-vindas para testes','at':int(time.time())}],'ad_free':False}
+    return {'id':pid,'name':str(name).strip()[:20] or 'Jogador','ws':ws,'hand':[],'strikes':0,'out':False,'spectator':False,'bot':False,'room':None,'media':False,'test_balance_cents':TEST_START_BALANCE_CENTS,'wallet_history':[{'amount_cents':TEST_START_BALANCE_CENTS,'description':'Bônus único de boas-vindas para testes','at':int(time.time())}],'ad_free':False}
 
 def error(ws,message): emit(ws,'error',message=message)
 
@@ -353,7 +353,7 @@ async def websocket(request):
                 amount=d.get('amount')
                 if not isinstance(amount,int) or isinstance(amount,bool) or amount<0 or amount>5000 or amount%500:
                     error(ws,'Escolha entre R$ 0 e R$ 50 de teste, em intervalos de R$ 5.');continue
-                if any(x.get('balance_cents',0)<amount for x in eligible(room)):
+                if any(x.get('test_balance_cents',0)<amount for x in eligible(room)):
                     error(ws,'Um participante não tem saldo de teste suficiente para essa entrada.');continue
                 accepted=[p['id']]+[x['id'] for x in eligible(room) if x['bot']]
                 room['proposal']={'amount':amount,'accepted':accepted,'wallet_type':'test'}
@@ -363,7 +363,7 @@ async def websocket(request):
                 offer=room.get('proposal')
                 if not room.get('winner') or not offer or offer.get('wallet_type')!='test' or p.get('spectator',False):
                     error(ws,'Não há proposta de revanche disponível.');continue
-                if p.get('balance_cents',0)<offer['amount']:
+                if p.get('test_balance_cents',0)<offer['amount']:
                     error(ws,'Seu saldo de teste é insuficiente para aceitar esta revanche.');continue
                 if p['id'] not in offer['accepted']:offer['accepted'].append(p['id'])
                 notice(room,p['name']+' aceitou o valor de teste proposto.')
