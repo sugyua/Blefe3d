@@ -52,7 +52,7 @@ def info(room):
     'players':[{'id':p['id'],'name':p['name'],'bot':p['bot'],'connected':p.get('ws') is not None and not p['ws'].closed if p.get('ws') else p['bot'],'cards':len(p['hand']),'strikes':0,'out':p['out'],'media':p.get('media',False)} for p in room['players']],
     'turn':room['turn'],'color':room['color'],'top':({'rank':'hidden','color':room['color']} if room.get('hidden_top') else room['top']),'direction':room['direction'],
     'pending':{'player':pending['player'],'claim':pending['claim'],'color':pending['color']} if pending else None,
-    'last':room['last'],'winner':room.get('winner'),'deck_count':len(room['deck'])}
+    'last':room['last'],'winner':room.get('winner'),'deck_count':len(room['deck']), 'move':room.get('move')}
 
 def sync(room):
     payload=info(room)
@@ -65,7 +65,7 @@ def notice(room,msg):
 def make_room(player, mode):
     code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
     while code in ROOMS: code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
-    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'hidden_top':False,'pending':None,'last':None,'winner':None,'created':time.time()}
+    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'hidden_top':False,'pending':None,'last':None,'move':None,'move_serial':0,'winner':None,'created':time.time()}
     ROOMS[code]=room
     player['room']=code
     return room
@@ -92,7 +92,7 @@ def start(room):
     i=next(i for i,c in enumerate(room['deck']) if c['rank'].isdigit())
     card=room['deck'].pop(i)
     room.update(started=True,turn=random.choice(room['players'])['id'],color=card['color'],
-        top=card,discard=[card],pending=None,direction=1,hidden_top=False,last=None,winner=None)
+        top=card,discard=[card],pending=None,direction=1,hidden_top=False,last=None,move=None,move_serial=0,winner=None)
     sync(room);notice(room,'Descarte por cor ou número; ações ficam ocultas e podem ser blefes!')
     bots_schedule(room)
     return True
@@ -135,6 +135,8 @@ def play(room,p,ids,claim=None,newcolor=None):
         room['pending']={'player':p['id'],'card':card,'claim':claim,'color':targetcolor}
         room['turn']=advance(room,p['id'])['id']
         room['last']=None
+        room['move_serial']+=1
+        room['move']={'id':room['move_serial'],'player':p['id'],'name':p['name'],'hidden':True,'claim':claim}
         notice(room,p['name']+' declarou '+LABEL[claim]+' com a carta virada para baixo.')
         sync(room);bots_schedule(room)
         return None
@@ -146,6 +148,8 @@ def play(room,p,ids,claim=None,newcolor=None):
     room['color']=newcolor if card['color']=='wild' else card['color'];room['hidden_top']=False
     room['turn']=advance(room,p['id'])['id']
     room['last']=None
+    room['move_serial']+=1
+    room['move']={'id':room['move_serial'],'player':p['id'],'name':p['name'],'hidden':False,'card':card}
     notice(room,p['name']+' jogou '+card['rank']+'.')
     finalize(room,p);sync(room);bots_schedule(room)
     return None
@@ -160,17 +164,19 @@ def resolve(room,p,doubt):
     room['discard'].append(actual);room['top']=actual;room['hidden_top']=False
     room['last']={'accuser':p['name'],'accused':actor['name'],'lie':not truthful,
         'cards':[actual],'loser':actor['name'] if not truthful else p['name'],'out':False,
-        'claim':claim,'accepted':not doubt}
+        'claim':claim,'accepted':not doubt,'penalty':0}
     if doubt:
         if truthful:
             n=(2 if claim=='draw2' else 4 if claim=='draw4' else 0)+1
             draw(room,p,n)
+            room['last']['penalty']=n
             notice(room,p['name']+f' duvidou errado e comprou {n} carta(s).')
             if claim=='reverse':room['direction']*=-1
             room['color']=q['color'];room['turn']=advance(room,p['id'])['id']
             finalize(room,actor)
         else:
             draw(room,actor,2)
+            room['last']['penalty']=2
             room['turn']=p['id']
             notice(room,actor['name']+' foi pego blefando e comprou 2 cartas!')
         send_room(room,'reveal',result=room['last'])
@@ -253,6 +259,7 @@ async def websocket(request):
             if t=='create':
                 if room: error(ws,'Você já está em uma sala.');continue
                 mode='training' if d.get('mode')=='training' else 'online'
+                p['name']=str(d.get('name') or p['name']).strip()[:20] or 'Jogador'
                 room=make_room(p,mode)
                 if mode=='training':
                     for i in range(3):
@@ -261,6 +268,7 @@ async def websocket(request):
                 else: sync(room)
             elif t=='join':
                 if room: error(ws,'Saia da sala anterior primeiro.');continue
+                p['name']=str(d.get('name') or p['name']).strip()[:20] or 'Jogador'
                 code=str(d.get('code','')).upper().strip();room=ROOMS.get(code)
                 if not room: error(ws,'Sala não encontrada.');continue
                 if room['started'] or len(room['players'])>=4 or room['mode']=='training': error(ws,'Sala indisponível.');continue
