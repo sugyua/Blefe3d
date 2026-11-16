@@ -228,3 +228,27 @@
  .headActions #connection{font-size:9px}
  .victoryPanel{padding:13px 13px!important}
 }
+
+
+/* Sala de teste, convite para WhatsApp e cartas acumuladas — 0.7 */
+.createStakeField{display:grid;gap:6px;text-align:left;background:#172838;border:1px solid #50677c;border-radius:12px;padding:10px 12px}
+.createStakeField label{display:block;font-size:12px;font-weight:850;margin:0;color:#deeffd}
+.createStakeField select{display:block;appearance:auto;-webkit-appearance:menulist;width:100%;min-width:0;border:1px solid #60829b;border-radius:8px;color:#eafff3;background:#293f53;padding:11px 8px;font-size:14px}
+.createStakeField small{display:block;font-size:10px;color:#c3d2df;line-height:1.4}
+.joinPreview{display:flex;flex-direction:column;gap:8px;background:#202f40;border:1px solid #6e97a2;border-radius:10px;text-align:left;padding:11px 12px}
+.joinPreview strong{font-size:15px;color:#f0e3ac}
+.joinPreview p{font-size:12px;color:#dce8ee;line-height:1.5;margin:0}
+.joinPreview button{font-size:12px;line-height:1.25;padding:11px}
+.waitingStake{font-size:15px;font-weight:900;line-height:1.35;color:#f6e4a5;padding:10px;background:#324235;border:1px solid #5ba27f;border-radius:10px;margin:8px 0 11px}
+.waiting .whatsappLink{display:inline-flex;justify-content:center;align-items:center;text-align:center;min-height:42px;max-width:100%;border-radius:10px;padding:9px 13px;background:#13805d;border:1px solid #32b487;color:#fff;font-weight:800;font-size:13px;text-decoration:none;vertical-align:middle;margin:4px}
+.waiting .whatsappLink:hover,.waiting .whatsappLink:focus-visible{background:#1a9a6e}
+.tableCards .stackedBack{margin-left:-13px;margin-right:-3px;box-shadow:0 4px 9px #0009,inset 0 0 0 3px #722b41}
+.tableCards .stackedBack:first-child{margin-left:0}
+#tableTarget:has(b){text-align:center;max-width:92%;line-height:1.3}
+#tableTarget b{font-variant-numeric:tabular-nums}
+@media(max-width:370px){
+  .waiting{left:5%;right:5%;padding:16px}
+  .waiting button,.waiting .whatsappLink{font-size:12px;padding:9px}
+  .stack{gap:8px}
+  .createStakeField{padding:8px}
+}
