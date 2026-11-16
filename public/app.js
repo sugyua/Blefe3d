@@ -2,16 +2,18 @@
 const $=id=>document.getElementById(id);
 const COR={red:'VERMELHO',yellow:'AMARELO',green:'VERDE',blue:'AZUL',wild:'CORINGA'};
 const ACAO={skip:'BLOQUEIO',draw2:'+2',reverse:'INVERTER',draw4:'+4',wild:'CORINGA',hidden:'CARTA OCULTA'};
+const dinheiroTeste=centavos=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(centavos||0)/100);
 const nomeCarta=c=>!c?'carta':(ACAO[c.rank]||c.rank)+(c.color&&c.color!=='wild'?' '+(COR[c.color]||''):'');
-const state={id:null,room:null,hand:[],selected:new Set(),ws:null,token:localStorage.getItem('blefe_token'),name:localStorage.getItem('blefe_name')||'',stream:null,pcs:new Map(),remoteStreams:new Map(),micEnabled:true,camEnabled:false,voiceReady:false,volumes:new Map(),selectedColor:'red',claim:null,previewStream:null,lastAnimatedMove:null,mediaConnecting:false,revealTimers:[],victoryShown:null,victoryTimer:null};
+const state={id:null,room:null,hand:[],selected:new Set(),ws:null,token:localStorage.getItem('blefe_token'),name:localStorage.getItem('blefe_name')||'',stream:null,pcs:new Map(),remoteStreams:new Map(),micEnabled:true,camEnabled:false,voiceReady:false,volumes:new Map(),selectedColor:'red',claim:null,previewStream:null,lastAnimatedMove:null,mediaConnecting:false,revealTimers:[],victoryShown:null,victoryTimer:null,wallet:{balance_cents:5000,history:[],ad_free:false},publicConfig:null};
 $('nickname').value=state.name;
 function toast(s){const el=$('toast');el.textContent=s;el.style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.style.display='none',3500)}
 function send(type,data={}){if(state.ws?.readyState===1)state.ws.send(JSON.stringify({type,...data}));else toast('Servidor desconectado. Reconectando...')}
 function connection(){const proto=location.protocol==='https:'?'wss':'ws';const ws=new WebSocket(proto+'://'+location.host+'/ws');state.ws=ws;$('connection').textContent='● Conectando';
 ws.onopen=()=>{$('connection').textContent='● Conectado';send('hello',{name:state.name||'Jogador',token:state.token})};
 ws.onmessage=async e=>{let m;try{m=JSON.parse(e.data)}catch{return}
-if(m.type==='welcome'){state.id=m.id;state.token=m.id;localStorage.setItem('blefe_token',m.id);if(m.room){$('lobby').hidden=true;$('game').hidden=false;if(state.room)render();if(state.voiceReady)send('media_ready',{ready:true})}}
+if(m.type==='welcome'){state.id=m.id;state.token=m.id;localStorage.setItem('blefe_token',m.id);if(m.wallet){state.wallet=m.wallet;updateWalletUI()}if(m.room){$('lobby').hidden=true;$('game').hidden=false;if(state.room)render();if(state.voiceReady)send('media_ready',{ready:true})}}
 else if(m.type==='state'){state.room=m.state;state.hand=m.hand||[];state.selected=new Set([...state.selected].filter(x=>state.hand.some(c=>c.id===x)));render();if(m.state.move&&m.state.move.id!==state.lastAnimatedMove){state.lastAnimatedMove=m.state.move.id;animateMove(m.state.move)}}
+else if(m.type==='wallet'){state.wallet=m.wallet;updateWalletUI();if(state.room?.winner&&!$('victory').hidden)populateVictory(state.room)}
 else if(m.type==='notice'){$('logline').textContent=m.message}
 else if(m.type==='error')toast(m.message)
 else if(m.type==='reveal')showReplay(m.result)
@@ -29,7 +31,43 @@ $('victoryLeave').onclick=()=>{$('victory').hidden=true;send('leave')};
 $('victorySpectate').onclick=()=>{send('spectate');$('victory').hidden=true;toast('Você continuará na sala como espectador.')};
 $('victoryAccept').onclick=()=>send('rematch_accept');
 $('victoryRematch').onclick=()=>send('rematch_propose',{amount:Number($('rematchAmount').value)});
-$('rematchAmount').oninput=()=>{$('rematchAmountLabel').textContent=$('rematchAmount').value+' fichas'};
+$('rematchAmount').oninput=()=>{$('rematchAmountLabel').textContent=dinheiroTeste($('rematchAmount').value)+' de teste'};
+$('openWallet').onclick=()=>{updateWalletUI();$('walletModal').hidden=false};
+$('gameWallet').onclick=()=>{updateWalletUI();$('walletModal').hidden=false};
+$('closeWallet').onclick=()=>{$('walletModal').hidden=true};
+$('openDonation').onclick=()=>{$('donationModal').hidden=false;loadPublicConfig()};
+$('closeDonation').onclick=()=>{$('donationModal').hidden=true};
+$('copyDonationPix').onclick=async()=>{
+  const key=state.publicConfig?.donation_pix_key;
+  if(!key){toast('O Pix ainda não está configurado.');return}
+  try{await navigator.clipboard.writeText(key);toast('Chave Pix copiada.')}
+  catch(err){window.prompt('Copie a chave Pix de apoio:',key)}
+};
+function updateWalletUI(){
+  const w=state.wallet||{balance_cents:5000,history:[]};
+  for(const id of ['lobbyBalance','walletBigBalance','gameWallet'])
+    $(id).textContent=dinheiroTeste(w.balance_cents);
+  const el=$('walletTransactions');el.replaceChildren();
+  (w.history||[]).slice().reverse().slice(0,8).forEach(entry=>{
+    const row=document.createElement('div');row.className='walletTransaction';
+    const name=document.createElement('span');name.textContent=entry.description||'Movimentação de teste';
+    const value=document.createElement('strong');value.textContent=(entry.amount_cents>=0?'+':'')+dinheiroTeste(entry.amount_cents);
+    value.className=entry.amount_cents>=0?'positive':'negative';
+    row.append(name,value);el.append(row);
+  });
+}
+async function loadPublicConfig(){
+  if(!state.publicConfig){
+    try{const resp=await fetch('/config',{cache:'no-store'});if(resp.ok)state.publicConfig=await resp.json()}
+    catch(err){console.warn('Configuração Pix indisponível',err)}
+  }
+  const config=state.publicConfig||{};
+  $('donationSetup').hidden=!!config.donation_enabled;
+  $('donationKeyPanel').hidden=!config.donation_enabled;
+  $('donationPixKey').textContent=config.donation_pix_key||'';
+  $('donationPixOwner').textContent=config.donation_pix_owner?'Destinatário: '+config.donation_pix_owner:'';
+}
+updateWalletUI();
 $('copyInvite').onclick=async()=>{const link=location.origin+'/?sala='+(state.room?.code||'');try{await navigator.clipboard.writeText(link);toast('Link da sala copiado!')}catch{prompt('Copie o convite:',link)}};
 $('helpBtn').onclick=()=>{$('guide').hidden=false};$('closeGuide').onclick=()=>{$('guide').hidden=true};$('closeReplay').onclick=closeReplay;
 $('play').onclick=()=>{if(!state.selected.size)return;const c=state.hand.find(c=>state.selected.has(c.id));if(!c)return;if(['skip','draw2','reverse','draw4'].includes(c.rank)){state.claim=c.rank;$('claimPanel').hidden=false;$('colors').hidden=c.rank!=='draw4';return}if(c.rank==='wild'){state.claim=null;$('claimPanel').hidden=false;document.querySelector('.claimGrid').hidden=true;$('colors').hidden=false;return}send('play',{cards:[...state.selected]})};
@@ -172,7 +210,7 @@ function populateVictory(room){
   $('victoryEmblem').textContent=won?'🏆':'🥈';
   $('victoryEyebrow').textContent=won?'PARABÉNS!':'PARTIDA ENCERRADA';
   $('victoryTitle').textContent=won?'VOCÊ VENCEU!':winner.name+' VENCEU!';
-  $('victoryMessage').textContent=won?'Você descartou suas cartas e ganhou esta partida!':'O vencedor foi '+winner.name+'. Prepare uma revanche ou assista aos próximos jogadores.';
+  $('victoryMessage').textContent=(won?'Você descartou suas cartas e ganhou esta partida!':'O vencedor foi '+winner.name+'. Prepare uma revanche ou assista aos próximos jogadores.')+(room.stake>0?' Entrada: '+dinheiroTeste(room.stake)+' de teste por participante.':' Rodada gratuita.');
   const list=$('victoryPlayers');
   list.replaceChildren();
   const people=[...room.players].filter(p=>!p.spectator);
@@ -205,14 +243,19 @@ function populateVictory(room){
   const observer=!!me?.spectator;
   const hosting=room.host===state.id&&!observer;
   const offer=room.proposal;
+  const max=Math.max(0,Math.min(5000,Math.floor((state.wallet?.balance_cents||0)/500)*500));
+  $('rematchAmount').max=String(max);
+  if(Number($('rematchAmount').value)>max)$('rematchAmount').value=String(max);
+  $('rematchAmountLabel').textContent=dinheiroTeste($('rematchAmount').value)+' de teste';
   $('rematchHostControls').hidden=!hosting;
   $('rematchProposal').hidden=!offer;
   $('victoryWaiting').hidden=!!offer||hosting||observer;
   $('victoryWaiting').textContent=observer?'Você está assistindo. Aguarde a próxima rodada.':'Aguardando o anfitrião propor a revanche.';
   $('victorySpectate').hidden=observer;
   $('victoryAccept').hidden=observer||!offer||offer.accepted.includes(state.id);
+  $('victoryAccept').disabled=!!offer&&Number(state.wallet?.balance_cents||0)<offer.amount;
   if(offer){
-    $('rematchProposedValue').textContent='Proposta: '+offer.amount+' '+(offer.amount===1?'ficha virtual':'fichas virtuais')+' por participante';
+    $('rematchProposedValue').textContent='Proposta: '+dinheiroTeste(offer.amount)+' de teste por participante';
     const acceptance=$('rematchAcceptance');acceptance.replaceChildren();
     room.players.filter(p=>!p.spectator).forEach(p=>{
       const label=document.createElement('div');label.className='rematchVote';
