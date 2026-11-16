@@ -4,7 +4,7 @@ const COR={red:'VERMELHO',yellow:'AMARELO',green:'VERDE',blue:'AZUL',wild:'CORIN
 const ACAO={skip:'BLOQUEIO',draw2:'+2',reverse:'INVERTER',draw4:'+4',wild:'CORINGA',hidden:'CARTA OCULTA'};
 const dinheiroTeste=centavos=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(centavos||0)/100);
 const nomeCarta=c=>!c?'carta':(ACAO[c.rank]||c.rank)+(c.color&&c.color!=='wild'?' '+(COR[c.color]||''):'');
-const state={id:null,room:null,hand:[],selected:new Set(),ws:null,token:localStorage.getItem('blefe_token'),name:localStorage.getItem('blefe_name')||'',stream:null,pcs:new Map(),remoteStreams:new Map(),micEnabled:true,camEnabled:false,voiceReady:false,volumes:new Map(),selectedColor:'red',claim:null,previewStream:null,lastAnimatedMove:null,mediaConnecting:false,revealTimers:[],victoryShown:null,victoryTimer:null,wallet:{balance_cents:5000,test:{balance_cents:5000},real:{balance_cents:0,enabled:false},history:[],ad_free:false},publicConfig:null};
+const state={id:null,room:null,hand:[],selected:new Set(),ws:null,token:localStorage.getItem('blefe_token'),name:localStorage.getItem('blefe_name')||'',stream:null,pcs:new Map(),remoteStreams:new Map(),micEnabled:true,camEnabled:false,voiceReady:false,volumes:new Map(),selectedColor:'red',claim:null,previewStream:null,lastAnimatedMove:null,mediaConnecting:false,revealTimers:[],victoryShown:null,victoryTimer:null,wallet:{balance_cents:5000,test:{balance_cents:5000},real:{balance_cents:0,enabled:false},history:[],ad_free:false},publicConfig:null,roomPreview:null};
 $('nickname').value=state.name;
 function toast(s){const el=$('toast');el.textContent=s;el.style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.style.display='none',3500)}
 function send(type,data={}){if(state.ws?.readyState===1)state.ws.send(JSON.stringify({type,...data}));else toast('Servidor desconectado. Reconectando...')}
@@ -22,9 +22,43 @@ else if(m.type==='media_peer'){if(m.id!==state.id){if(m.ready&&state.voiceReady&
 else if(m.type==='signal')await onSignal(m.sender,m.signal)};
 ws.onclose=()=>{if(state.ws!==ws)return;$('connection').textContent='● Desconectado';for(const id of [...state.pcs.keys()])removePeer(id,false);renderPeers();setTimeout(connection,1600)};ws.onerror=()=>{}}
 function startNamed(type,extra){const name=$('nickname').value.trim()||'Jogador';state.name=name;localStorage.setItem('blefe_name',name);if(!state.id){toast('Conectando ao servidor...');return}send(type,{...extra,name,wallet_type:'test'})}
-$('training').onclick=()=>startNamed('create',{mode:'training'});
-$('create').onclick=()=>startNamed('create',{mode:'online'});
-$('join').onclick=()=>startNamed('join',{code:$('roomcode').value.trim().toUpperCase()});
+$('training').onclick=()=>startNamed('create',{mode:'training',stake:0});
+$('create').onclick=()=>{
+  const raw=$('createStake').value;
+  if(raw===''){toast('Escolha primeiro o valor de entrada da sala.');$('createStake').focus();return}
+  const amount=Number(raw);
+  const balance=state.wallet?.test?.balance_cents??state.wallet?.balance_cents??0;
+  if(amount>balance){toast('Seu saldo de teste é menor que o valor escolhido.');return}
+  startNamed('create',{mode:'online',stake:amount});
+};
+let previewSequence=0;
+async function previewRoom(code){
+  code=String(code||'').trim().toUpperCase();
+  const panel=$('joinPreview');panel.hidden=true;panel.replaceChildren();
+  if(!/^[A-Z0-9]{6}$/.test(code)){toast('O código da sala deve ter seis letras ou números.');return}
+  const seq=++previewSequence;
+  try{
+    const response=await fetch('/api/sala/'+encodeURIComponent(code),{cache:'no-store'});
+    if(!response.ok){if(seq===previewSequence)toast('Sala não encontrada. Confira o código.');return}
+    const data=await response.json();
+    if(seq!==previewSequence)return;
+    state.roomPreview=data;
+    const title=document.createElement('strong');
+    title.textContent='Sala '+data.code+' — '+data.host_name;
+    const details=document.createElement('p');
+    details.textContent='Entrada por participante: '+dinheiroTeste(data.stake_cents)+' de saldo fictício. Nenhum dinheiro real será cobrado.';
+    const consent=document.createElement('button');
+    consent.className='primary';
+    const balance=state.wallet?.test?.balance_cents??state.wallet?.balance_cents??0;
+    consent.textContent=data.joinable?'Aceitar entrada e participar':'Partida já iniciada / sala indisponível';
+    consent.disabled=!data.joinable||data.stake_cents>balance;
+    if(data.stake_cents>balance)details.textContent+=' Saldo de teste insuficiente.';
+    consent.onclick=()=>startNamed('join',{code:data.code,accept_stake_cents:data.stake_cents});
+    panel.append(title,details,consent);panel.hidden=false;
+  }catch(error){if(seq===previewSequence)toast('Não foi possível consultar a sala. Verifique sua conexão.')}
+}
+$('join').onclick=()=>previewRoom($('roomcode').value);
+$('roomcode').addEventListener('input',()=>{$('joinPreview').hidden=true;state.roomPreview=null});
 $('startBtn').onclick=()=>send('start');$('leaveBtn').onclick=()=>{if(confirm('Sair da partida?'))send('leave')};
 $('victoryClose').onclick=()=>{$('victory').hidden=true};
 $('victoryLeave').onclick=()=>{$('victory').hidden=true;send('leave')};
@@ -70,14 +104,44 @@ async function loadPublicConfig(){
   $('donationPixOwner').textContent=config.donation_pix_owner?'Destinatário: '+config.donation_pix_owner:'';
 }
 updateWalletUI();
-$('copyInvite').onclick=async()=>{const link=location.origin+'/?sala='+(state.room?.code||'');try{await navigator.clipboard.writeText(link);toast('Link da sala copiado!')}catch{prompt('Copie o convite:',link)}};
+
 $('helpBtn').onclick=()=>{$('guide').hidden=false};$('closeGuide').onclick=()=>{$('guide').hidden=true};$('closeReplay').onclick=closeReplay;
 $('play').onclick=()=>{if(!state.selected.size)return;const c=state.hand.find(c=>state.selected.has(c.id));if(!c)return;if(['skip','draw2','reverse','draw4'].includes(c.rank)){state.claim=c.rank;$('claimPanel').hidden=false;$('colors').hidden=c.rank!=='draw4';return}if(c.rank==='wild'){state.claim=null;$('claimPanel').hidden=false;document.querySelector('.claimGrid').hidden=true;$('colors').hidden=false;return}send('play',{cards:[...state.selected]})};
 $('challenge').onclick=()=>send('challenge');
 $('accept').onclick=()=>send('accept');
 $('draw').onclick=()=>send('draw');
 $('bluff').onclick=()=>{if(!state.selected.size)return;state.claim=null;document.querySelector('.claimGrid').hidden=false;$('colors').hidden=true;$('claimPanel').hidden=false};
-$('whatsappInvite').onclick=()=>{const code=state.room?.code||'';const link=location.origin+'/?sala='+code;const message='Vem jogar Blefe Color comigo! Sala: '+code+'\\n'+link;window.open('https://wa.me/?text='+encodeURIComponent(message),'_blank','noopener,noreferrer')};
+function inviteMessage(room){
+  const url=new URL(location.pathname,location.origin);
+  url.searchParams.set('sala',room.code);
+  const host=room.players?.find(x=>x.id===room.host)?.name||'Anfitrião';
+  return [
+    'Convite para jogar BLEFE COLOR!',
+    'Sala: '+room.code,
+    'Anfitrião: '+host,
+    'Entrada: '+dinheiroTeste(room.stake)+' de teste por participante',
+    'Saldo fictício, sem dinheiro real ou saques.',
+    'Entre pelo link:',
+    url.toString()
+  ].join('\n');
+}
+function updateInvitation(room){
+  if(!room||room.mode==='training')return;
+  const message=inviteMessage(room);
+  $('whatsappInvite').href='https://wa.me/?text='+encodeURIComponent(message);
+  $('whatsappInvite').setAttribute('aria-label','Enviar convite da sala '+room.code+' pelo WhatsApp');
+  $('waitingStake').textContent='Entrada da sala: '+dinheiroTeste(room.stake)+' em saldo de teste por jogador';
+}
+$('whatsappInvite').addEventListener('click',event=>{
+  if(!state.room){event.preventDefault();toast('Crie uma sala antes de convidar amigos.');return}
+  updateInvitation(state.room);
+});
+$('copyInvite').onclick=async()=>{
+  if(!state.room)return;
+  const message=inviteMessage(state.room);
+  try{await navigator.clipboard.writeText(message);toast('Convite com código e valor copiado!')}
+  catch(error){window.prompt('Copie e envie o convite:',message)}
+};
 $('cancelClaim').onclick=()=>{$('claimPanel').hidden=true};
 for(const el of document.querySelectorAll('[data-color]')){el.onclick=()=>{state.selectedColor=el.dataset.color;for(const b of document.querySelectorAll('[data-color]'))b.style.outline=b===el?'3px solid white':'';if(state.claim||document.querySelector('.claimGrid').hidden){send('play',{cards:[...state.selected],claim:state.claim,color:state.selectedColor});$('claimPanel').hidden=true;state.claim=null;document.querySelector('.claimGrid').hidden=false}}}
 for(const el of document.querySelectorAll('[data-claim]')){el.onclick=()=>{state.claim=el.dataset.claim;if(state.claim==='draw4'){$('colors').hidden=false;toast('Selecione a cor do +4.')}else{send('play',{cards:[...state.selected],claim:state.claim,color:state.selectedColor});$('claimPanel').hidden=true;state.claim=null}}};
@@ -505,4 +569,4 @@ document.addEventListener('visibilitychange',()=>{
     if(video.srcObject&&video.paused)video.play().catch(()=>{});
   }
 });
-const invitation=new URLSearchParams(location.search).get('sala');if(invitation){$('roomcode').value=invitation;toast('Informe seu nome e entre na sala pelo código.')}connection();
+const invitation=new URLSearchParams(location.search).get('sala');if(invitation){$('roomcode').value=invitation.toUpperCase();previewRoom(invitation)}connection();
