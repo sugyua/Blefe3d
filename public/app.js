@@ -469,15 +469,82 @@ function erroPermissao(err,type){
   if(err?.name==='NotReadableError')return 'O dispositivo está sendo usado por outro aplicativo. Feche outros aplicativos e tente novamente.';
   return 'Não foi possível ativar '+type+'. Tente novamente.';
 }
+// Voice rings are derived locally from each audio stream; no voice levels are sent to the server.
+function prepareVoiceContext(){
+  if(!state.voiceContext){
+    const AudioCtx=window.AudioContext||window.webkitAudioContext;
+    if(!AudioCtx)return false;
+    state.voiceContext=new AudioCtx();
+  }
+  if(state.voiceContext.state==='suspended')state.voiceContext.resume().catch(()=>{});
+  if(!state.voiceTimer)state.voiceTimer=setInterval(refreshVoiceRings,150);
+  return true;
+}
+function stopVoiceMeter(id){
+  const old=state.voiceMeters.get(id);
+  if(old){try{old.source.disconnect()}catch(e){}state.voiceMeters.delete(id)}
+  const box=[...document.querySelectorAll('.peer')].find(x=>x.dataset.peer===id);
+  if(box)box.classList.remove('speaking');
+}
+function watchVoice(id,stream){
+  if(!id||!stream||!state.voiceReady||!prepareVoiceContext())return;
+  const track=stream.getAudioTracks()?.find(t=>t.readyState==='live');
+  if(!track)return;
+  const old=state.voiceMeters.get(id);
+  if(old?.trackId===track.id)return;
+  stopVoiceMeter(id);
+  try{
+    const input=new MediaStream([track]);
+    const source=state.voiceContext.createMediaStreamSource(input);
+    const analyser=state.voiceContext.createAnalyser();
+    analyser.fftSize=256;
+    analyser.smoothingTimeConstant=.55;
+    source.connect(analyser);
+    state.voiceMeters.set(id,{source,analyser,bytes:new Uint8Array(analyser.fftSize),
+      trackId:track.id,lastSpeech:0});
+  }catch(e){console.warn('Indicador de voz indisponível:',e)}
+}
+function refreshVoiceRings(){
+  if(!state.voiceReady||document.hidden)return;
+  const now=performance.now();
+  for(const [id,meter] of state.voiceMeters){
+    let speaking=false;
+    try{
+      if(id!==state.id||state.micEnabled){
+        meter.analyser.getByteTimeDomainData(meter.bytes);
+        let power=0;
+        for(let i=0;i<meter.bytes.length;i++){
+          const n=(meter.bytes[i]-128)/128;
+          power+=n*n;
+        }
+        const volume=Math.sqrt(power/meter.bytes.length);
+        if(volume>.028)meter.lastSpeech=now;
+        speaking=now-meter.lastSpeech<450;
+      }
+    }catch(e){speaking=false}
+    const box=[...document.querySelectorAll('.peer')].find(x=>x.dataset.peer===id);
+    if(box){
+      box.classList.toggle('speaking',speaking);
+      box.setAttribute('aria-label',speaking?'Falando agora':'Microfone sem atividade');
+    }
+  }
+}
+function stopVoiceAnalysis(){
+  if(state.voiceTimer){clearInterval(state.voiceTimer);state.voiceTimer=null}
+  for(const id of [...state.voiceMeters.keys()])stopVoiceMeter(id);
+  if(state.voiceContext){state.voiceContext.close().catch(()=>{});state.voiceContext=null}
+}
 async function startVoice(){
   if(state.voiceReady||state.mediaConnecting)return;
   if(!navigator.mediaDevices?.getUserMedia){toast('O microfone exige uma conexão HTTPS.');return}
   state.mediaConnecting=true;
+  prepareVoiceContext();
   try{
     state.stream=await navigator.mediaDevices.getUserMedia({
       audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false
     });
     state.voiceReady=true;state.micEnabled=true;
+    watchVoice(state.id,state.stream);
     $('voiceBtn').textContent='🎙 Voz ligada';$('micBtn').disabled=false;
     $('micBtn').textContent='🔊 Microfone ligado';
     send('media_ready',{ready:true});
@@ -560,7 +627,7 @@ async function connectPeer(id){
       if(stream.getTracks().includes(e.track))stream.removeTrack(e.track);
       renderPeers();
     };
-    if(e.track.kind==='audio')attachAudio(id,stream);
+    if(e.track.kind==='audio'){attachAudio(id,stream);watchVoice(id,stream)}
     renderPeers();
   };
   pc.onnegotiationneeded=()=>offer(pc,id);
@@ -626,6 +693,7 @@ function attachAudio(id,stream){
     audio.play().catch(()=>{});
   }
   audio.volume=(state.volumes.get(id)??100)/100;
+  watchVoice(id,stream);
 }
 function removePeer(id,refresh=true){
   const pc=state.pcs.get(id);
@@ -635,6 +703,7 @@ function removePeer(id,refresh=true){
     pc.close();
   }
   state.pcs.delete(id);state.remoteStreams.delete(id);
+  stopVoiceMeter(id);
   const audio=document.getElementById('audio-'+id);
   if(audio){audio.pause();audio.srcObject=null;audio.remove()}
   if(refresh&&state.room)renderPeers();
@@ -645,6 +714,7 @@ function closeMedia(){
   for(const track of state.stream?.getTracks()||[])track.stop();
   state.stream=null;state.previewStream=null;
   state.voiceReady=false;state.camEnabled=false;state.micEnabled=true;
+  stopVoiceAnalysis();
   $('voiceBtn').textContent='🎙 Ativar voz';
   $('camBtn').textContent='📷 Ligar câmera';
   $('micBtn').disabled=true;
