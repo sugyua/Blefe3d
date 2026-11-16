@@ -1,11 +1,28 @@
 """Blefe 3D - authoritative multiplayer server."""
-import asyncio, json, random, secrets, string, time, os
+import asyncio, json, random, secrets, string, time, os, hmac, resource
 from pathlib import Path
 from aiohttp import web, WSMsgType
 
 ROOT = Path(__file__).parent / 'public'
 ROOMS = {}
 USERS = {}
+ADMIN_TOKEN = os.getenv('BLEFE_ADMIN_TOKEN', '').strip()
+METRICS = {'started_at':time.time(),'total_ws_connections':0,'current_ws_connections':0,
+           'peak_ws_connections':0,'peak_rooms':0,'matches_started':0,'messages_received':0}
+
+def remember_peak_rooms():
+    METRICS['peak_rooms']=max(METRICS['peak_rooms'],len(ROOMS))
+
+def active_ws(p):
+    ws=p.get('ws')
+    return ws is not None and not ws.closed
+
+def joinable(room):
+    return (room.get('mode')=='online' and not room['started']
+            and len(eligible(room))<4
+            and (player_by_id(room,room['host']) is not None)
+            and active_ws(player_by_id(room,room['host'])))
+
 TEST_START_BALANCE_CENTS = 5000
 DONATION_PIX_KEY = os.getenv('DONATION_PIX_KEY','').strip()
 DONATION_PIX_OWNER = os.getenv('DONATION_PIX_OWNER','').strip()
@@ -75,7 +92,7 @@ def send_room(room, type_, **data):
 
 def info(room):
     pending=room['pending']
-    return {'code':room['code'],'host':room['host'],'started':room['started'],'mode':room['mode'],
+    return {'code':room['code'],'host':room['host'],'started':room['started'],'mode':room['mode'],'visibility':room.get('visibility','private'),
     'players':[{'id':p['id'],'name':p['name'],'bot':p['bot'],'connected':p.get('ws') is not None and not p['ws'].closed if p.get('ws') else p['bot'],'cards':len(p['hand']),'strikes':0,'out':p['out'],'spectator':p.get('spectator',False),'media':p.get('media',False)} for p in room['players']],
     'turn':room['turn'],'color':room['color'],'top':({'rank':'hidden','color':room['color']} if room.get('hidden_top') else room['top']),'direction':room['direction'],
     'pending':{'player':pending['player'],'claim':pending['claim'],'color':pending['color']} if pending else None,
@@ -90,11 +107,12 @@ def sync(room):
 def notice(room,msg):
     send_room(room,'notice',message=msg)
 
-def make_room(player, mode, stake=0):
+def make_room(player, mode, stake=0, visibility='private'):
     code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
     while code in ROOMS: code=''.join(random.choices(string.ascii_uppercase+string.digits,k=6))
-    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'hidden_top':False,'pending':None,'draw_stack':0,'stack_count':0,'last':None,'move':None,'move_serial':0,'round':0,'stake':stake,'pot_cents':0,'wallet_type':'test','proposal':None,'winner':None,'created':time.time()}
+    room={'code':code,'host':player['id'],'players':[player],'started':False,'mode':mode,'turn':None,'color':None,'top':None,'deck':[],'discard':[],'direction':1,'hidden_top':False,'pending':None,'draw_stack':0,'stack_count':0,'last':None,'move':None,'move_serial':0,'round':0,'stake':stake,'visibility':visibility,'pot_cents':0,'wallet_type':'test','proposal':None,'winner':None,'created':time.time()}
     ROOMS[code]=room
+    remember_peak_rooms()
     player['room']=code
     return room
 
@@ -140,6 +158,7 @@ def start(room):
     if amount:
         for p in participants:wallet_change(p,-amount,'Entrada na rodada de teste')
     room['round']=room.get('round',0)+1
+    METRICS['matches_started']+=1
     room['deck']=build_deck()
     for p in room['players']:
         p['hand']=[];p['strikes']=0;p['out']=False
@@ -366,12 +385,16 @@ def error(ws,message): emit(ws,'error',message=message)
 async def websocket(request):
     ws=web.WebSocketResponse(heartbeat=20,max_msg_size=100000)
     await ws.prepare(request)
+    METRICS['total_ws_connections']+=1
+    METRICS['current_ws_connections']+=1
+    METRICS['peak_ws_connections']=max(METRICS['peak_ws_connections'],METRICS['current_ws_connections'])
     p=None
     try:
         async for msg in ws:
             if msg.type!=WSMsgType.TEXT: continue
             try: d=json.loads(msg.data)
             except Exception: continue
+            METRICS['messages_received']+=1
             t=d.get('type')
             if t=='hello':
                 token=d.get('token')
@@ -393,13 +416,16 @@ async def websocket(request):
                     error(ws,'Partidas com carteira real indisponíveis. Use somente saldo fictício de teste.');continue
                 if room: error(ws,'Você já está em uma sala.');continue
                 mode='training' if d.get('mode')=='training' else 'online'
+                visibility=d.get('visibility','private')
+                if visibility not in ('public','private'):error(ws,'Escolha sala pública ou privada.');continue
+                if mode=='training':visibility='private'
                 amount=0 if mode=='training' else d.get('stake')
                 if type(amount) is not int or amount<0 or amount>5000 or amount%500:
                     error(ws,'Escolha o valor de entrada: de R$ 0 a R$ 50, em intervalos de R$ 5 (saldo de teste).');continue
                 if p.get('test_balance_cents',0)<amount:
                     error(ws,'Seu saldo de teste não cobre o valor escolhido para a sala.');continue
                 p['name']=str(d.get('name') or p['name']).strip()[:20] or 'Jogador'
-                room=make_room(p,mode,amount)
+                room=make_room(p,mode,amount,visibility)
                 if mode=='training':
                     for i in range(3):
                         b=create_player(['Robô Ana','Robô Beto','Robô Cris'][i],None);b['bot']=True;b['id']='BOT'+str(i)+room['code'];b['room']=room['code'];room['players'].append(b)
@@ -415,6 +441,7 @@ async def websocket(request):
                 if room.get('wallet_type')!='test':
                     error(ws,'Essa sala não usa carteira de teste.');continue
                 if (room['started'] and not room['winner']) or len(eligible(room))>=4 or room['mode']=='training': error(ws,'Sala indisponível.');continue
+                if room.get('visibility')=='public' and not active_ws(player_by_id(room,room['host'])):error(ws,'Anfitrião desconectado.');continue
                 if d.get('accept_stake_cents')!=room.get('stake',0) or type(d.get('accept_stake_cents')) is not int:
                     error(ws,'Confira e aceite o valor de entrada da sala antes de participar.');continue
                 if p.get('test_balance_cents',0)<room.get('stake',0):
@@ -498,6 +525,7 @@ async def websocket(request):
                 if dest and not dest['bot']:
                     emit(dest.get('ws'),'signal',sender=p['id'],signal=d.get('signal'))
     finally:
+        METRICS['current_ws_connections']=max(0,METRICS['current_ws_connections']-1)
         if p and p.get('ws') is ws:
             p['ws']=None;p['media']=False
             if p['room'] in ROOMS:
@@ -514,13 +542,74 @@ async def room_preview(request):
     if not room or room.get('mode')!='online':
         return web.json_response({'error':'Sala não encontrada.'},status=404)
     host=player_by_id(room,room['host'])
-    joinable=(not room['started'] or bool(room['winner'])) and len(eligible(room))<4
+    can_join=(not room['started'] or bool(room['winner'])) and len(eligible(room))<4
     return web.json_response({
         'code':room['code'],'host_name':host['name'] if host else 'Anfitrião',
         'stake_cents':room.get('stake',0),'wallet_type':'test',
-        'joinable':joinable,'players':len(eligible(room)),
+        'joinable':can_join,'players':len(eligible(room)),
         'round_started':bool(room['started'] and not room['winner'])
     })
+
+
+def room_summary(room):
+    host=player_by_id(room,room['host'])
+    winner=player_by_id(room,room.get('winner')) if room.get('winner') else None
+    participants=[p for p in room['players'] if not p.get('spectator',False)]
+    active=[p for p in participants if not p['bot'] and active_ws(p)]
+    ongoing=room['started'] and not room['winner']
+    leader=min(participants,key=lambda p:len(p['hand'])) if ongoing and participants else None
+    return {'code':room['code'],'visibility':room.get('visibility','private'),
+       'status':'em andamento' if ongoing else 'encerrada' if room.get('winner') else 'aguardando',
+       'host':host['name'] if host else '—','stake_cents':room.get('stake',0),
+       'pot_cents':room.get('pot_cents',0),'wallet_type':'test',
+       'players_count':len(participants),'connected_players':len(active),
+       'winner':winner['name'] if winner else None,
+       'leader':leader['name'] if leader else None,
+       'round':room.get('round',0),'created_at':int(room['created']),
+       'players':[{'name':p['name'],'cards':len(p['hand']),
+                  'bot':p['bot'],'connected':p['bot'] or active_ws(p),
+                  'turn':p['id']==room['turn'],'spectator':p.get('spectator',False)}
+                  for p in room['players']]}
+
+async def list_public_rooms(request):
+    # Never expose private room codes through discovery.
+    rooms=[]
+    for room in ROOMS.values():
+        if room.get('visibility')=='public' and joinable(room):
+            host=player_by_id(room,room['host'])
+            rooms.append({'code':room['code'],'host':host['name'] if host else 'Anfitrião',
+                          'stake_cents':room.get('stake',0),'players':len(eligible(room)),
+                          'capacity':4,'created_at':int(room['created'])})
+    rooms.sort(key=lambda r:(r['players']*-1,r['created_at']))
+    return web.json_response({'rooms':rooms[:150],'total':len(rooms),
+            'currency':'BRL_TEST'},headers={'Cache-Control':'no-store'})
+
+async def admin_panel(request):
+    return web.FileResponse(ROOT/'admin.html')
+
+async def admin_metrics(request):
+    supplied=request.headers.get('Authorization','')
+    if not ADMIN_TOKEN or not hmac.compare_digest(supplied,'Bearer '+ADMIN_TOKEN):
+        return web.json_response({'error':'Acesso restrito.'},status=401,headers={'Cache-Control':'no-store'})
+    rooms=[room_summary(room) for room in ROOMS.values()]
+    live=sum(1 for r in rooms if r['status']=='em andamento')
+    public=sum(1 for r in rooms if r['visibility']=='public')
+    connected=sum(1 for p in USERS.values() if active_ws(p))
+    peak_memory=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return web.json_response({
+      'server':{'uptime_seconds':round(time.time()-METRICS['started_at']),
+                'connections':METRICS['current_ws_connections'],
+                'connected_players':connected,
+                'peak_connections':METRICS['peak_ws_connections'],
+                'total_connections':METRICS['total_ws_connections'],
+                'messages_received':METRICS['messages_received'],
+                'registered_sessions':len(USERS),
+                'rooms':len(rooms),'public_rooms':public,
+                'matches_live':live,'matches_started':METRICS['matches_started'],
+                'peak_rooms':METRICS['peak_rooms'],
+                'memory_peak_mb':round(peak_memory/1024,1)},
+      'rooms':rooms
+    },headers={'Cache-Control':'no-store'})
 
 async def public_config(request):
     return web.json_response({'donation_pix_key':DONATION_PIX_KEY,
@@ -533,6 +622,9 @@ app.router.add_get('/ws',websocket)
 app.router.add_get('/health',health)
 app.router.add_get('/config',public_config)
 app.router.add_get('/api/sala/{code}',room_preview)
+app.router.add_get('/api/salas-publicas',list_public_rooms)
+app.router.add_get('/painel',admin_panel)
+app.router.add_get('/api/admin/metrics',admin_metrics)
 app.router.add_static('/static/',ROOT)
 if __name__=='__main__':
     port=int(os.getenv('PORT','8080'))
