@@ -137,7 +137,7 @@ $('play').onclick=()=>{
 $('challenge').onclick=()=>send('challenge');
 $('accept').onclick=()=>send('accept');
 $('draw').onclick=()=>send('draw');
-$('bluff').onclick=()=>{if(!state.selected.size)return;openDeclaration(!!state.room?.draw_stack,null)};
+$('bluff').onclick=()=>{if(!state.selected.size)return;const card=state.hand.find(c=>state.selected.has(c.id));if(state.room?.draw_stack&&card&&!['draw2','draw4'].includes(card.rank)){toast('Para empilhar é preciso ter uma carta +2 ou +4.');return}openDeclaration(!!state.room?.draw_stack,null)};
 function inviteMessage(room){
   const url=new URL(location.pathname,location.origin);
   url.searchParams.set('sala',room.code);
@@ -196,9 +196,9 @@ $('challenge').textContent=s.draw_stack?'DUVIDAR':'DESCONFIAR';
 $('accept').disabled=!myturn||!s.pending;
 $('accept').textContent=s.draw_stack?'COMPRAR +'+s.draw_stack:'ACREDITAR';
 $('draw').disabled=!myturn||!!s.pending;
-$('bluff').disabled=!myturn||!state.selected.size||(!!s.pending&&!s.draw_stack);
-$('bluff').textContent=s.draw_stack?'BLEFAR PILHA':'BLEFAR';
 const selected=state.hand.find(c=>state.selected.has(c.id));
+$('bluff').disabled=!myturn||!selected||(!!s.pending&&!s.draw_stack)||(!!s.draw_stack&&!['draw2','draw4'].includes(selected.rank));
+$('bluff').textContent=s.draw_stack?'BLEFAR VALOR':'BLEFAR';
 $('play').disabled=!myturn||!state.selected.size||(!!s.pending&&!s.draw_stack)||(!!s.draw_stack&&selected&&!['draw2','draw4'].includes(selected.rank));
 $('play').textContent=s.draw_stack?'EMPILHAR':'JOGAR CARTA';
 $('turnHint').textContent=winner?'Fim da partida. Confira o resultado e negocie a revanche.':!s.started?'Aguardando o anfitrião iniciar.':me?.spectator?'Você está assistindo à partida.':myturn?(s.draw_stack?'Pilha +'+s.draw_stack+': empilhe +2/+4, duvide ou compre todas.':s.pending?'Acredite ou duvide da carta oculta.':'Selecione uma carta ou compre uma e passe.'):'Aguardando '+(actor?.name||'jogador')+(s.draw_stack?' resolver a pilha +'+s.draw_stack:'')+'...';
@@ -214,7 +214,7 @@ function renderHandOnly(){
   for(const [i,el] of [...$('hand').children].entries())el.classList.toggle('selected',state.selected.has(state.hand[i].id));
   const actionPending=!!s?.pending&&!s?.draw_stack;
   $('play').disabled=!myTurn||!card||actionPending||(!!s?.draw_stack&&!['draw2','draw4'].includes(card.rank));
-  $('bluff').disabled=!myTurn||!card||actionPending;
+  $('bluff').disabled=!myTurn||!card||actionPending||(!!s?.draw_stack&&!['draw2','draw4'].includes(card.rank));
   $('play').textContent=s?.draw_stack?'EMPILHAR':'JOGAR CARTA';
 }
 function renderPeers(){
@@ -400,7 +400,7 @@ function showReplay(r){
     $('replayTitle').textContent=acertou?'ACERTOU AO DUVIDAR!':'ERROU AO DUVIDAR!';
     $('verdictEyebrow').textContent=acertou?'ERA BLEFE!':'ERA VERDADE!';
     $('replayText').textContent=nome+' desconfiou de '+r.accused+'. A carta real era '+nomeCarta(card)+', e a declaração foi '+(ACAO[r.claim]||r.claim)+'.';
-    $('penaltyLabel').textContent=r.loser+' comprou '+(r.penalty||2)+' carta(s).';
+    $('penaltyLabel').textContent=r.loser+' comprou '+(r.penalty||2)+' carta(s).'+(r.stack_count>1?(r.lie?' A pilha foi cancelada.':' Pilha de +'+r.stack_total+' mais uma.'):'');
   },1250));
   state.revealTimers.push(setTimeout(()=>closeReplay(),6500));
 }
