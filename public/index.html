@@ -1,14 +1,26 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#111827"><title>Blefe 3D — Protótipo</title><link rel="stylesheet" href="/static/style.css"></head><body>
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#111827"><title>Blefe Color — Testes</title><link rel="stylesheet" href="/static/style.css?v=20261116b"></head><body>
 <div id="app">
  <section id="lobby" class="overlay"><div class="welcome"><div class="brand">♠ BLEFE <span>COLOR</span></div><p>Jogue, desconfie e descubra quem está mentindo.</p><label>Seu nome<input id="nickname" maxlength="20" placeholder="Nome do jogador"></label><div class="stack"><button id="training" class="primary">Treinar com 3 bots</button><button id="create">Criar sala privada</button><div class="join"><input id="roomcode" maxlength="6" placeholder="CÓDIGO DA SALA"><button id="join">Entrar</button></div></div><small>Protótipo de testes • sem dinheiro real</small></div></section>
  <section id="game" hidden>
   <header><div><strong>BLEFE COLOR</strong><small id="roomLabel"></small></div><div class="headActions"><span id="connection">● Conectando</span><button id="helpBtn" title="Regras">?</button><button id="leaveBtn" title="Sair">✕</button></div></header>
-  <div id="topArea"><div id="turnBanner">Aguardando jogadores...</div><div id="peerCameras" class="peerCameras"></div><div class="mediaButtons"><button id="voiceBtn">🎙 Ativar voz</button><button id="camBtn">📷 Câmera</button><button id="micBtn" disabled>🔊 Mic ligado</button></div></div>
-  <div id="boardWrap"><div class="table3d"><div class="tableEdge"><div id="tableCards" class="tableCards"></div><div id="tableTarget">CARTA DA RODADA: <b>—</b></div></div></div><div id="logline">Bem-vindo à mesa.</div></div>
+  <div id="topArea"><div id="turnBanner">Aguardando jogadores...</div><div id="peerCameras" class="peerCameras"></div><div class="mediaButtons"><button id="voiceBtn">🎙 Ativar voz</button><button id="camBtn">📷 Câmera</button><button id="micBtn" disabled>🔊 Microfone ligado</button></div></div>
+  <div id="boardWrap"><div class="table3d"><div class="tableEdge"><div id="tableCards" class="tableCards"></div><div id="tableTarget">CARTA DA MESA: <b>—</b></div></div></div><div id="logline">Bem-vindo à mesa.</div></div>
   <div id="bottomArea"><div class="handHeader"><b>SUAS CARTAS</b><span id="strikes">7 cartas</span></div><div id="hand"></div><div id="actions"><button id="challenge" class="danger" disabled>DESCONFIAR</button><button id="accept" disabled>ACREDITAR</button><button id="draw" disabled>COMPRAR 1</button><button id="bluff" disabled>BLEFAR</button><button id="play" class="primary" disabled>JOGAR</button></div><div id="turnHint">Aguardando início da partida.</div></div>
   <div id="waiting" class="waiting" hidden><b id="waitingTitle">Sala privada</b><p id="waitingList"></p><button id="copyInvite">Copiar convite</button><button id="whatsappInvite" class="primary">Compartilhar no WhatsApp</button><button id="startBtn" class="primary">Iniciar partida</button></div>
  </section>
- <div id="claimPanel" class="modal" hidden><div class="modalInner"><h2>O que você declara?</h2><p>A carta será colocada virada para baixo. Os outros só ouvirão sua declaração.</p><div class="claimGrid"><button data-claim="skip">BLOQUEIO</button><button data-claim="draw2">+2</button><button data-claim="draw4">+4</button><button data-claim="reverse">INVERTER</button></div><p>Cor escolhida para o +4 / curinga:</p><div id="colors" class="claimGrid"><button data-color="red">🔴</button><button data-color="yellow">🟡</button><button data-color="green">🟢</button><button data-color="blue">🔵</button></div><button id="cancelClaim">Cancelar</button></div></div><div id="toast" aria-live="polite"></div>
- <div id="replay" class="modal" hidden><div class="modalInner"><h2 id="replayTitle">BLEFE!</h2><div id="replayCards" class="replayCards"></div><p id="replayText"></p><button id="closeReplay">Continuar</button></div></div>
+ <div id="claimPanel" class="modal" hidden><div class="modalInner"><h2>O que você declara?</h2><p>A carta será colocada virada para baixo. Os outros só ouvirão sua declaração.</p><div class="claimGrid"><button data-claim="skip">BLOQUEIO</button><button data-claim="draw2">+2</button><button data-claim="draw4">+4</button><button data-claim="reverse">INVERTER</button></div><p>Cor escolhida para o +4 / curinga:</p><div id="colors" class="claimGrid"><button data-color="red">🔴</button><button data-color="yellow">🟡</button><button data-color="green">🟢</button><button data-color="blue">🔵</button></div><button id="cancelClaim">Cancelar</button></div></div><div id="effectsLayer" class="effectsLayer" aria-hidden="true"></div><div id="toast" aria-live="polite"></div>
+ <div id="replay" class="modal cinematic" hidden>
+  <div class="modalInner verdictPanel" role="dialog" aria-modal="true" aria-labelledby="replayTitle">
+    <div class="verdictEyebrow" id="verdictEyebrow">DESAFIO À CARTA</div>
+    <h2 id="replayTitle">REVELANDO...</h2>
+    <div class="flipStage"><div class="flipCard" id="revealFlip">
+      <div class="flipCardSide flipCardBack"><span>?</span><small>CARTA OCULTA</small></div>
+      <div class="flipCardSide flipCardFront"><div id="revealActual" class="card uno wild"><b>?</b></div></div>
+    </div></div>
+    <p id="replayText">A carta está sendo revelada...</p>
+    <p id="penaltyLabel" class="penaltyLabel"></p>
+    <button id="closeReplay" class="primary">Continuar</button>
+  </div>
+</div>
  <div id="guide" class="modal" hidden><div class="modalInner"><h2>Como jogar</h2><p>1. Cada jogador recebe sete cartas. Combine a cor ou o número da carta da mesa.</p><p>2. As cartas de ação são jogadas viradas para baixo. Você declara BLOQUEIO, +2, +4 ou INVERTER e pode blefar.</p><p>3. O próximo jogador decide se acredita ou desconfia da ação oculta.</p><p>4. Se desconfiar errado, você compra o valor da ação declarada e mais uma carta. Se pegar o blefe, o autor compra duas.</p><p>5. Vence quem ficar sem cartas. Você pode comprar uma carta e passar a vez.</p><button id="closeGuide">Entendi</button></div></div>
-</div><script src="/static/app.js" defer></script></body></html>
+</div><script src="/static/app.js?v=20261116b" defer></script></body></html>
