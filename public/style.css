@@ -54,14 +54,14 @@
 .flipCardFront .card b{font-size:52px}
 .verdictPanel #replayText{line-height:1.5;font-size:14px;margin:9px 5px 4px;color:#dbe5f2;min-height:44px}
 .verdictPanel .penaltyLabel{margin:0 auto 12px;min-height:18px;font-size:14px;font-weight:900;color:#efc681;opacity:0;transform:translateY(8px);transition:.35s}
-.verdictPanel.showResult .penaltyLabel{opacity:1;transform:translateY(0)}
-.verdictPanel.correct #replayTitle{color:#74f6ac;animation:resultPop .45s ease-out}
-.verdictPanel.incorrect #replayTitle{color:#ff8c9c;animation:resultPop .45s ease-out}
-.verdictPanel.correct{border-color:#47bf88!important;box-shadow:0 0 50px #16aa654d}
-.verdictPanel.incorrect{border-color:#ed6974!important;box-shadow:0 0 50px #d43c5552}
+.cinematic.showResult .penaltyLabel{opacity:1;transform:translateY(0)}
+.cinematic.correct #replayTitle{color:#74f6ac;animation:resultPop .45s ease-out}
+.cinematic.incorrect #replayTitle{color:#ff8c9c;animation:resultPop .45s ease-out}
+.cinematic.correct .verdictPanel{border-color:#47bf88!important;box-shadow:0 0 50px #16aa654d}
+.cinematic.incorrect .verdictPanel{border-color:#ed6974!important;box-shadow:0 0 50px #d43c5552}
 @keyframes resultPop{0%{transform:scale(.86)}60%{transform:scale(1.08)}100%{transform:scale(1)}}
 .verdictPanel button{min-width:160px}
 @media (prefers-reduced-motion:reduce){
   .flipCard{transition-duration:.01ms}
-  .verdictPanel,.verdictPanel.correct #replayTitle,.verdictPanel.incorrect #replayTitle,.tableCards.landed,#tableTarget.hiddenFlash{animation:none!important}
+  .verdictPanel,.cinematic.correct #replayTitle,.cinematic.incorrect #replayTitle,.tableCards.landed,#tableTarget.hiddenFlash{animation:none!important}
 }
