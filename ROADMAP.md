@@ -54,6 +54,8 @@
 ### v0.10 — Testes automatizados e correções críticas · P0
 **Entregas:** consolidar testes de regras do servidor, smoke tests de criação/entrada/saída de salas e teste do JavaScript no navegador; validar execução do CI no GitHub Actions; revisar estados inconsistentes ao fechar abas.
 
+**Estado da análise:** há testes automatizados para abandono do treino, separação de bots, bloqueio da carteira real, um cenário de desafio de pilha e criação/entrada/saída por WebSocket. A saída do jogador da vez foi corrigida para respeitar a ordem e o sentido da rodada. Um workflow executa os testes em Linux e verifica a sintaxe do JavaScript, mas isso não substitui testes no navegador. Ainda faltam ampliar a cobertura de desafios e pilhas e dos fluxos de salas, confirmar o CI e a proteção de publicação e executar a [lista de regressão mobile](docs/regressao-mobile.md). A versão permanece pendente.
+
 **Critérios de aceite:**
 - Os testes de abandono do treino, bots proibidos em salas humanas, desafios, pilhas, carteira fictícia e início de partida são executados automaticamente em cada alteração.
 - Uma falha nos testes bloqueia a publicação; não há erros de JavaScript na criação de uma sala e em uma partida de ponta a ponta.

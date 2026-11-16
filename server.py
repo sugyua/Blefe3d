@@ -161,7 +161,7 @@ def player_by_id(room, pid):
 def next_player(room,pid):
     a=room['players']; idx=next((i for i,p in enumerate(a) if p['id']==pid),-1)
     for j in range(1,len(a)+1):
-        p=a[(idx+j)%len(a)]
+        p=a[(idx+j*room['direction'])%len(a)]
         if not p['out'] and not p.get('spectator',False): return p
     return None
 
@@ -535,6 +535,7 @@ async def websocket(request):
                     else:
                         original=room['players']
                         if room['started']:p['out']=True
+                        nextp=next_player(room,p['id']) if room['started'] and room['turn']==p['id'] else None
                         room['players']=[x for x in original if x['id']!=p['id']]
                         p['room']=None;p['hand']=[];p['media']=False
                         if not room['players']:
@@ -542,11 +543,7 @@ async def websocket(request):
                         else:
                             if room['host']==p['id']:room['host']=room['players'][0]['id']
                             if room['started'] and room['turn']==p['id']:
-                                try:
-                                    nextp=next_player(room,p['id'])
-                                    room['turn']=nextp['id'] if nextp else None
-                                except (ValueError,StopIteration):
-                                    room['turn']=None
+                                room['turn']=nextp['id'] if nextp else None
                             sync(room)
                             notice(room,f"{p['name']} saiu.")
                         emit(ws,'left')
