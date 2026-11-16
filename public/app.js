@@ -11,18 +11,46 @@ function send(type,data={}){if(state.ws?.readyState===1)state.ws.send(JSON.strin
 function connection(){const proto=location.protocol==='https:'?'wss':'ws';const ws=new WebSocket(proto+'://'+location.host+'/ws');state.ws=ws;$('connection').textContent='● Conectando';
 ws.onopen=()=>{$('connection').textContent='● Conectado';send('hello',{name:state.name||'Jogador',token:state.token})};
 ws.onmessage=async e=>{let m;try{m=JSON.parse(e.data)}catch{return}
-if(m.type==='welcome'){state.id=m.id;state.token=m.id;localStorage.setItem('blefe_token',m.id);if(m.wallet){state.wallet=m.wallet;updateWalletUI()}if(m.room){$('lobby').hidden=true;$('game').hidden=false;if(state.room)render();if(state.voiceReady)send('media_ready',{ready:true})}}
+if(m.type==='welcome'){
+  state.id=m.id;state.token=m.id;localStorage.setItem('blefe_token',m.id);
+  if(m.wallet){state.wallet=m.wallet;updateWalletUI()}
+  if(m.room){
+    $('lobby').hidden=true;$('game').hidden=false;
+    if(state.room)render();
+    if(state.voiceReady)send('media_ready',{ready:true});
+  }else if(state.room){
+    const wasTraining=state.room.mode==='training';
+    state.room=null;state.hand=[];state.selected.clear();
+    $('victory').hidden=true;$('game').hidden=true;$('lobby').hidden=false;
+    closeMedia();
+    if(wasTraining)toast('A conexão caiu. O treino contra bots foi encerrado e a entrada fictícia não foi reembolsada.');
+  }
+}
 else if(m.type==='state'){state.room=m.state;state.hand=m.hand||[];state.selected=new Set([...state.selected].filter(x=>state.hand.some(c=>c.id===x)));render();if(m.state.move&&m.state.move.id!==state.lastAnimatedMove){state.lastAnimatedMove=m.state.move.id;animateMove(m.state.move)}}
 else if(m.type==='wallet'){state.wallet=m.wallet;updateWalletUI();if(state.room?.winner&&!$('victory').hidden)populateVictory(state.room)}
 else if(m.type==='notice'){$('logline').textContent=m.message}
 else if(m.type==='error')toast(m.message)
 else if(m.type==='reveal')showReplay(m.result)
-else if(m.type==='left'){state.room=null;state.hand=[];state.selected.clear();clearTimeout(state.victoryTimer);$('victory').hidden=true;state.victoryShown=null;$('game').hidden=true;$('lobby').hidden=false;closeMedia()}
+else if(m.type==='left'){
+  state.room=null;state.hand=[];state.selected.clear();
+  clearTimeout(state.victoryTimer);$('victory').hidden=true;
+  state.victoryShown=null;$('game').hidden=true;$('lobby').hidden=false;
+  closeMedia();
+  if(m.training_closed)toast(m.forfeited_cents>0
+    ?'Treino encerrado. '+dinheiroTeste(m.forfeited_cents)+' de entrada fictícia não foram devolvidos.'
+    :'Sala contra bots encerrada.');
+}
 else if(m.type==='media_peer'){if(m.id!==state.id){if(m.ready&&state.voiceReady&&state.id<m.id){const peer=state.room?.players.find(p=>p.id===m.id);if(peer?.media)await connectPeer(m.id)}else if(!m.ready)removePeer(m.id)}}
 else if(m.type==='signal')await onSignal(m.sender,m.signal)};
 ws.onclose=()=>{if(state.ws!==ws)return;$('connection').textContent='● Desconectado';for(const id of [...state.pcs.keys()])removePeer(id,false);renderPeers();setTimeout(connection,1600)};ws.onerror=()=>{}}
 function startNamed(type,extra){const name=$('nickname').value.trim()||'Jogador';state.name=name;localStorage.setItem('blefe_name',name);if(!state.id){toast('Conectando ao servidor...');return}send(type,{...extra,name,wallet_type:'test'})}
-$('training').onclick=()=>startNamed('create',{mode:'training',stake:0});
+$('training').onclick=()=>{
+  const amount=Number($('trainingStake').value);
+  const balance=state.wallet?.test?.balance_cents??state.wallet?.balance_cents??0;
+  if(!Number.isInteger(amount)||amount<0||amount>5000||amount%500){toast('Escolha uma entrada válida para o treino.');return}
+  if(amount>balance){toast('Saldo fictício insuficiente para esta entrada.');return}
+  startNamed('create',{mode:'training',stake:amount});
+};
 $('create').onclick=()=>{
   const raw=$('createStake').value;
   if(raw===''){toast('Escolha primeiro o valor de entrada da sala.');$('createStake').focus();return}
@@ -98,7 +126,14 @@ $('publicRefresh').onclick=refreshPublicRooms;
 $('publicClose').onclick=closePublicRooms;
 $('join').onclick=()=>previewRoom($('roomcode').value);
 $('roomcode').addEventListener('input',()=>{$('joinPreview').hidden=true;state.roomPreview=null});
-$('startBtn').onclick=()=>send('start');$('leaveBtn').onclick=()=>{if(confirm('Sair da partida?'))send('leave')};
+$('startBtn').onclick=()=>send('start');$('leaveBtn').onclick=()=>{
+  const room=state.room;
+  const trainingActive=room?.mode==='training'&&room.started&&!room.winner;
+  const message=trainingActive
+    ?'Abandonar o treino encerrará a sala imediatamente. A entrada de '+dinheiroTeste(room.stake)+' em saldo fictício já descontada NÃO será devolvida. Deseja sair?'
+    :'Deseja sair da sala?';
+  if(confirm(message))send('leave');
+};
 $('victoryClose').onclick=()=>{$('victory').hidden=true};
 $('victoryLeave').onclick=()=>{$('victory').hidden=true;send('leave')};
 $('victorySpectate').onclick=()=>{send('spectate');$('victory').hidden=true;toast('Você continuará na sala como espectador.')};
