@@ -263,7 +263,7 @@ async def websocket(request):
                 room=make_room(p,mode)
                 if mode=='training':
                     for i in range(3):
-                        b=create_player(['Bot Ana','Bot Beto','Bot Cris'][i],None);b['bot']=True;b['id']='BOT'+str(i)+room['code'];b['room']=room['code'];room['players'].append(b)
+                        b=create_player(['Robô Ana','Robô Beto','Robô Cris'][i],None);b['bot']=True;b['id']='BOT'+str(i)+room['code'];b['room']=room['code'];room['players'].append(b)
                     start(room)
                 else: sync(room)
             elif t=='join':
