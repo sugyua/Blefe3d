@@ -1,4 +1,4 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#10213d"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Blefe Color"><meta name="application-name" content="Blefe Color"><meta name="description" content="Jogo de cartas coloridas com blefe, partidas online entre amigos e treino grátis. Sem dinheiro real."><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png"><link rel="icon" type="image/svg+xml" href="/static/icon.svg"><title>Blefe Color — Testes</title><link rel="stylesheet" href="/static/style.css?v=20261117guest01"><link rel="stylesheet" href="/static/shop.css?v=20261117shop1"></head><body>
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#10213d"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Blefe Color"><meta name="application-name" content="Blefe Color"><meta name="description" content="Jogo de cartas coloridas com blefe, partidas online entre amigos e treino grátis. Sem dinheiro real."><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png"><link rel="icon" type="image/svg+xml" href="/static/icon.svg"><title>Blefe Color — Testes</title><link rel="stylesheet" href="/static/style.css?v=20261117welcome02"><link rel="stylesheet" href="/static/shop.css?v=20261117shop1"></head><body>
 <div id="accountBar" class="accountBar" role="banner">
   <div class="accountLogo">♠ <span>BLEFE</span> COLOR</div>
   <div class="accountControls">
@@ -11,7 +11,7 @@
 </div>
 <div id="app">
  <section id="lobby" class="overlay"><div class="welcome"><div class="brand">♠ BLEFE <span>COLOR</span></div><p>Jogue, desconfie e descubra quem está mentindo.</p><div class="lobbyTools"><button id="openShop" class="shopOpenButton"><span aria-hidden="true">✦</span> Loja de skins <small>PERSONALIZE</small></button><button id="openWallet">Carteira</button><button id="openDonation">Apoiar via Pix</button></div>
-<div class="pwaButtons"><button id="installApp" class="pwaInstall">Instalar jogo no celular</button><button id="showGuideFromLobby">Como começar?</button></div><p id="lobbyIdentity" class="lobbyIdentity">Você pode jogar com saldo fictício sem criar conta. Para proteger o saldo entre dispositivos, faça login.</p><div class="stack">
+<div class="pwaButtons"><button id="installApp" class="pwaInstall">Instalar jogo no celular</button><button id="showGuideFromLobby">Como jogar?</button></div><p id="lobbyIdentity" class="lobbyIdentity">Você pode jogar com saldo fictício sem criar conta. Para proteger o saldo entre dispositivos, faça login.</p><div class="stack">
 <button id="publicBrowse" class="primary">Encontrar salas públicas</button>
 <div class="trainingOptions">
   <label for="trainingStake">Treino contra bots — entrada com saldo fictício</label>
@@ -96,15 +96,14 @@
     <p class="authNotice">Saldo apenas para teste, sem valor monetário ou saques. O saldo da sessão de visitante é separado da carteira da sua conta. Não compartilhe sua senha. Ainda não há recuperação de senha por e-mail.</p>
   </div>
 </div><div id="welcomeGuide" class="modal" hidden>
-  <div class="modalInner pwaDialog" role="dialog" aria-modal="true" aria-labelledby="welcomeGuideTitle">
+  <div class="modalInner pwaDialog welcomeSimple" role="dialog" aria-modal="true" aria-labelledby="welcomeGuideTitle">
     <div class="pwaEyebrow">PRIMEIRA PARTIDA</div>
     <h2 id="welcomeGuideTitle">Bem-vindo ao Blefe Color!</h2>
-    <p>Jogue uma carta da mesma cor ou número. As cartas de ação ficam viradas para baixo: quem as joga pode dizer a verdade ou blefar.</p>
-    <div class="introSteps"><span>1. Comece com um treino grátis contra 3 bots.</span><span>2. Depois entre em uma sala pública ou convide amigos.</span><span>3. Quando alguém declarar +2, +4 ou bloqueio, escolha acreditar ou duvidar.</span></div>
-    <p class="introWarning">As entradas são só de teste, sem valor real. O jogo precisa de internet.</p>
-    <button id="welcomeTraining" class="primary">Quero experimentar grátis</button>
-    <button id="welcomePublic">Procurar salas públicas</button>
-    <button id="welcomeClose">Entendi, fechar</button>
+    <p>Comece com um treino grátis ou encontre uma sala para jogar.</p>
+    <p class="introWarning">Entradas apenas de teste, sem valor real.</p>
+    <button id="welcomeTraining" class="primary">Treino grátis</button>
+    <button id="welcomePublic">Salas públicas</button>
+    <button id="welcomeClose">Fechar</button>
   </div>
 </div>
 <div id="installModal" class="modal" hidden>
@@ -212,4 +211,4 @@
   </div>
  </div>
  <div id="guide" class="modal" hidden><div class="modalInner"><h2>Como jogar</h2><p>1. Cada jogador recebe sete cartas. Combine a cor ou o número da carta da mesa.</p><p>2. As cartas de ação são jogadas viradas para baixo. Você declara BLOQUEIO, +2, +4 ou INVERTER e pode blefar.</p><p>3. Ao receber um +2 ou +4, você pode empilhar outro +2 ou +4 que esteja na sua mão. A carta empilhada continua virada para baixo: você pode declarar +2 ou +4 e até blefar sobre seu valor.</p><p>4. A pilha soma todas as compras: +2, +4, +6, +8 e assim por diante. Quem não tiver +2 ou +4 deve aceitar e comprar tudo, ou duvidar da última declaração.</p><p>5. Se duvidar errado, compre a pilha inteira e mais uma carta. Se descobrir mentira, o último jogador compra duas cartas e a pilha é cancelada.</p><p>6. Vence quem ficar sem cartas. Fora de uma pilha, você pode comprar uma carta e passar a vez.</p><button id="closeGuide">Entendi</button></div></div>
-</div><script src="/static/app.js?v=20261117guest01" defer></script><script src="/static/shop.js?v=20261117shop1" defer></script><script src="/static/pwa.js?v=20261117pwa1" defer></script></body></html>
+</div><script src="/static/app.js?v=20261117guest01" defer></script><script src="/static/shop.js?v=20261117shop1" defer></script><script src="/static/pwa.js?v=20261117pwa02" defer></script></body></html>
