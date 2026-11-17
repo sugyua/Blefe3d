@@ -162,7 +162,8 @@ def _turn_clock_key(room):
     # Usar o ID da carta oculta para diferenciar a fase de contestação.
     # O cronômetro NÃO reinicia em sync, reconexão, atualização da loja
     # ou nova pessoa entrando no meio de uma rodada.
-    return (room.get('round',0),room.get('turn'),
+    return (room.get('round',0),room.get('turn'),room.get('move_serial',0),
+            room.get('_timeout_serial',0),
             pending['card']['id'] if pending else None)
 
 
@@ -232,6 +233,7 @@ def timeout_turn(room):
         if pending['claim']=='reverse':
             room['direction']*=-1
     draw(room,player,1)
+    room['_timeout_serial']=room.get('_timeout_serial',0)+1
     nxt=advance(room,player['id'])
     room['turn']=nxt['id']
     room['last']=None
@@ -540,6 +542,7 @@ def draw_turn(room,p):
     if enforce_turn_clock(room):
         return 'Os 30 segundos acabaram. Você comprou 1 carta e perdeu a vez.'
     draw(room,p,1)
+    room['move_serial']=room.get('move_serial',0)+1
     room['turn']=advance(room,p['id'])['id']
     notice(room,p['name']+' comprou uma carta e passou.')
     sync(room);bots_schedule(room)
