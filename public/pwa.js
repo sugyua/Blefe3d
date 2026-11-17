@@ -56,7 +56,7 @@
     dismissWelcome();
     $('publicBrowse')?.click();
   });
-  $('showGuideFromLobby')?.addEventListener('click',()=>show(tutorial));
+  $('showGuideFromLobby')?.addEventListener('click',()=>show($('guide')));
   if(!invite){
     let seen=false;
     try{seen=localStorage.getItem(seenKey)==='1'}catch(e){}
