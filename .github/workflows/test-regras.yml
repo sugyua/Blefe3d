@@ -42,3 +42,40 @@ jobs:
         run: node --check public/app.js && node --check public/shop.js
       - name: Testar abandono, carteira fictícia e salas humanas
         run: python -m unittest discover -s tests -v
+
+  publicar_render:
+    name: Render — publicar após testes
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    needs: regras
+    # Nunca publicar código de PR; somente main e execução manual em main.
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: read
+    concurrency:
+      group: render-blefe-color-producao
+      cancel-in-progress: false
+    env:
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+    steps:
+      - name: Avisar se o deploy hook ainda não foi configurado
+        if: env.RENDER_DEPLOY_HOOK_URL == ''
+        run: |
+          echo "::warning title=Render ainda não automatizado::Configure o secret RENDER_DEPLOY_HOOK_URL em Settings > Secrets and variables > Actions."
+          echo "⚠️ Publicação não solicitada: falta o secret RENDER_DEPLOY_HOOK_URL. Os testes passaram, mas o Render NÃO recebeu deploy." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Solicitar deploy ao Render
+        if: env.RENDER_DEPLOY_HOOK_URL != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          # O hook é uma credencial. Não imprima a URL nem os headers.
+          # Sem ?ref=SHA para não alterar a configuração auto-deploy do Render.
+          curl --fail --silent --show-error --retry 3 --retry-all-errors \
+            --connect-timeout 10 --max-time 45 \
+            --request POST "$RENDER_DEPLOY_HOOK_URL" \
+            --output "$RUNNER_TEMP/blefe-render-response.json"
+          echo "✅ O Render recebeu a solicitação de deploy do commit ${GITHUB_SHA::12}." >> "$GITHUB_STEP_SUMMARY"
+          echo "O deploy é assíncrono. Confirme o estado **Live** no [Render](https://dashboard.render.com/web/srv-dbtidj5g1s2s73b789hg)." >> "$GITHUB_STEP_SUMMARY"
