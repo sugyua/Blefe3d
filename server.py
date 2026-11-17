@@ -24,6 +24,11 @@ def active_ws(p):
     return ws is not None and not ws.closed
 
 def joinable(room):
+    if room.get('showcase'):
+        # Lugar de um bot pode ser assumido durante uma rodada ativa.
+        return (room.get('wallet_type')=='test' and room.get('started')
+                and not room.get('winner') and
+                any(p['bot'] and not p['out'] for p in room['players']))
     return (room.get('mode')=='online' and not room['started']
             and len(eligible(room))<4
             and (player_by_id(room,room['host']) is not None)
@@ -140,7 +145,8 @@ def info(room):
     'players':[{'id':p['id'],'name':p['name'],'bot':p['bot'],'connected':p.get('ws') is not None and not p['ws'].closed if p.get('ws') else p['bot'],'cards':len(p['hand']),'strikes':0,'out':p['out'],'spectator':p.get('spectator',False),'media':p.get('media',False),
                'cosmetics':dict(p.get('cosmetics') or cosmetics.DEFAULTS)}
                for p in room['players']],
-    'turn':room['turn'],'color':room['color'],'top':({'rank':'hidden','color':room['color']} if room.get('hidden_top') else room['top']),'direction':room['direction'],
+    'turn':room['turn'],'showcase':bool(room.get('showcase')),
+    'room_name':room.get('room_name'),'color':room['color'],'top':({'rank':'hidden','color':room['color']} if room.get('hidden_top') else room['top']),'direction':room['direction'],
     'pending':{'player':pending['player'],'claim':pending['claim'],'color':pending['color']} if pending else None,
     'draw_stack':room.get('draw_stack',0),'stack_count':room.get('stack_count',0),
     'last':room['last'],'winner':room.get('winner'),'deck_count':len(room['deck']), 'move':room.get('move'),'round':room.get('round',0),'stake':room.get('stake',0),'pot_cents':room.get('pot_cents',0),'wallet_type':room.get('wallet_type','test'),'proposal':room.get('proposal')}
@@ -217,8 +223,14 @@ def start(room):
     if room.get('started') and not room.get('winner'):return False
     participants=eligible(room)
     if len(participants)<2:return False
-    # Treinamento contém um humano e robôs; salas online aceitam exclusivamente humanos.
-    if room.get('mode')=='training':
+    # Treinamento clássico aceita um humano; mesas permanentes misturam bots
+    # e humanos; salas online comuns continuam sendo exclusivamente humanas.
+    if room.get('mode')=='showcase':
+        if len(participants)>4:return False
+        for bot in participants:
+            if bot['bot'] and bot.get('test_balance_cents',0)<room.get('stake',0):
+                bot['test_balance_cents']=TEST_START_BALANCE_CENTS
+    elif room.get('mode')=='training':
         if sum(not p['bot'] for p in participants)!=1:return False
         if sum(p['bot'] for p in participants)!=3:return False
     elif room.get('mode')=='online':
@@ -249,7 +261,7 @@ def start(room):
 def finalize(room,p):
     if room['winner']:return True
     if not p['hand']:
-        room['winner']=p['id'];room['turn']=None
+        room['winner']=p['id'];room['turn']=None;room['finished_at']=time.monotonic()
         pot=room.get('pot_cents',0)
         if pot:
             wallet_change(p,pot,'Prêmio da rodada de teste',event_key=f"prize:{room['code']}:{room['round']}:{p['id']}")
@@ -427,7 +439,7 @@ def draw_turn(room,p):
     return None
 
 def bots_schedule(room):
-    if room['mode']!='training' or room['winner'] or not room['started']:return
+    if room['mode'] not in ('training','showcase') or room['winner'] or not room['started']:return
     current=player_by_id(room,room['turn'])
     if not current or not current['bot']:return
     async def move(code,pid):
@@ -570,6 +582,12 @@ async def websocket(request):
                 if not room: error(ws,'Sala não encontrada.');continue
                 if room.get('wallet_type')!='test':
                     error(ws,'Essa sala não usa carteira de teste.');continue
+                if room.get('showcase'):
+                    if d.get('accept_stake_cents')!=room.get('stake') or type(d.get('accept_stake_cents')) is not int:
+                        error(ws,'Confirme a entrada fictícia antes de assumir um bot.');continue
+                    result=takeover_showcase_bot(room,p)
+                    if result:error(ws,result)
+                    continue
                 if (room['started'] and not room['winner']) or len(eligible(room))>=4 or room['mode']=='training': error(ws,'Sala indisponível.');continue
                 if room.get('visibility')=='public' and not active_ws(player_by_id(room,room['host'])):error(ws,'Anfitrião desconectado.');continue
                 if d.get('accept_stake_cents')!=room.get('stake',0) or type(d.get('accept_stake_cents')) is not int:
@@ -632,7 +650,12 @@ async def websocket(request):
                 if res:error(ws,res)
             elif t=='leave':
                 if room:
-                    if room['mode']=='training':
+                    if room.get('showcase'):
+                        # Desistência de jogo fictício não reembolsa a entrada já debitada.
+                        forfeited=room.get('stake',0)
+                        restore_showcase_bot(room,p,reason='saiu')
+                        emit(ws,'left',training_closed=False,forfeited_cents=forfeited)
+                    elif room['mode']=='training':
                         # Desistir termina o treino imediatamente; a entrada fictícia já foi
                         # debitada no início e NUNCA é reembolsada após abandono.
                         forfeited=close_training_room(room)
@@ -666,9 +689,12 @@ async def websocket(request):
             p['ws']=None;p['media']=False
             if p['room'] in ROOMS:
                 r=ROOMS[p['room']]
-                if r['mode']=='training':
-                    # Fechar a aba ou perder o WebSocket também encerra o treino:
-                    # diferentemente das salas humanas, não há reconexão a robôs.
+                if r.get('showcase'):
+                    # Reconexão é permitida por 25 s; depois o bot recupera a mão.
+                    sync(r)
+                    asyncio.create_task(expire_showcase_disconnect(r,p,ws))
+                elif r['mode']=='training':
+                    # Fechar a aba ou perder o WebSocket também encerra o treino.
                     close_training_room(r)
                 else:
                     sync(r)
@@ -910,16 +936,20 @@ async def health(request):return web.json_response({'ok':True,'rooms':len(ROOMS)
 async def room_preview(request):
     code=str(request.match_info.get('code','')).upper().strip()
     room=ROOMS.get(code)
-    if not room or room.get('mode')!='online':
+    if not room or (room.get('mode') not in ('online','showcase')):
         return web.json_response({'error':'Sala não encontrada.'},status=404)
     host=player_by_id(room,room['host'])
-    can_join=(not room['started'] or bool(room['winner'])) and len(eligible(room))<4
+    can_join=joinable(room) if room.get('showcase') else (
+        (not room['started'] or bool(room['winner'])) and len(eligible(room))<4)
+    bots=sum(p['bot'] for p in eligible(room))
     return web.json_response({
-        'code':room['code'],'host_name':host['name'] if host else 'Anfitrião',
+        'code':room['code'],'host_name':room.get('room_name') or (host['name'] if host else 'Anfitrião'),
         'stake_cents':room.get('stake',0),'wallet_type':'test',
         'joinable':can_join,'players':len(eligible(room)),
+        'bots':bots,'showcase':bool(room.get('showcase')),
+        'takeover':bool(room.get('showcase') and can_join),
         'round_started':bool(room['started'] and not room['winner'])
-    })
+    },headers={'Cache-Control':'no-store'})
 
 
 def room_summary(room):
@@ -930,6 +960,7 @@ def room_summary(room):
     ongoing=room['started'] and not room['winner']
     leader=min(participants,key=lambda p:len(p['hand'])) if ongoing and participants else None
     return {'code':room['code'],'visibility':room.get('visibility','private'),
+       'showcase':bool(room.get('showcase')),'room_name':room.get('room_name'),
        'status':'em andamento' if ongoing else 'encerrada' if room.get('winner') else 'aguardando',
        'host':host['name'] if host else '—','stake_cents':room.get('stake',0),
        'pot_cents':room.get('pot_cents',0),'wallet_type':'test',
@@ -948,10 +979,14 @@ async def list_public_rooms(request):
     for room in ROOMS.values():
         if room.get('visibility')=='public' and joinable(room):
             host=player_by_id(room,room['host'])
-            rooms.append({'code':room['code'],'host':host['name'] if host else 'Anfitrião',
+            rooms.append({'code':room['code'],
+                          'host':room.get('room_name') or (host['name'] if host else 'Anfitrião'),
                           'stake_cents':room.get('stake',0),'players':len(eligible(room)),
+                          'bots':sum(p['bot'] for p in eligible(room)),
+                          'showcase':bool(room.get('showcase')),
+                          'status':'em andamento' if room.get('started') else 'aguardando',
                           'capacity':4,'created_at':int(room['created'])})
-    rooms.sort(key=lambda r:(r['players']*-1,r['created_at']))
+    rooms.sort(key=lambda r:(not r.get('showcase'),r['players']*-1,r['created_at']))
     return web.json_response({'rooms':rooms[:150],'total':len(rooms),
             'currency':'BRL_TEST'},headers={'Cache-Control':'no-store'})
 
@@ -1005,6 +1040,159 @@ async def public_config(request):
         'donation_pix_owner':DONATION_PIX_OWNER,'donation_enabled':bool(DONATION_PIX_KEY),
         'withdrawals_enabled':False,'payments_enabled':False,'wallet_types':['test'],'real_betting_enabled':False})
 
+# Oito salas com bots IDENTIFICADOS como bots, não usuários humanos falsos.
+# Códigos próprios: nunca revelamos códigos das salas privadas de usuários.
+SHOWCASE_SPECS=(
+    ('BLC001','Mesa Esmeralda',0,2),
+    ('BLC002','Mesa Relâmpago',500,3),
+    ('BLC003','Mesa do Blefe',1000,2),
+    ('BLC004','Mesa do Desafio',500,3),
+    ('BLC005','Mesa das Cores',0,3),
+    ('BLC006','Mesa Violeta',1500,2),
+    ('BLC007','Mesa Estrelada',1000,3),
+    ('BLC008','Mesa da Revanche',2000,2),
+)
+SHOWCASE_BOT_NAMES=('Bot Luna','Bot Theo','Bot Íris')
+
+
+def make_showcase_room(code,title,stake,bot_count):
+    """Uma mesa de bots real, com baralho e jogadas ativos (não presença simulada)."""
+    if code in ROOMS:return ROOMS[code]
+    bots=[]
+    for i in range(bot_count):
+        bot=create_player(SHOWCASE_BOT_NAMES[i],None)
+        bot['id']='SHOWBOT'+code+str(i)
+        bot['bot']=True
+        bot['room']=code
+        bot['test_balance_cents']=TEST_START_BALANCE_CENTS
+        bots.append(bot)
+    room={'code':code,'host':bots[0]['id'],'players':bots,'started':False,
+          'mode':'showcase','showcase':True,'room_name':title,
+          'turn':None,'color':None,'top':None,'deck':[],'discard':[],
+          'direction':1,'hidden_top':False,'pending':None,'draw_stack':0,
+          'stack_count':0,'last':None,'move':None,'move_serial':0,'round':0,
+          'stake':stake,'visibility':'public','pot_cents':0,'wallet_type':'test',
+          'proposal':None,'winner':None,'created':time.time()}
+    ROOMS[code]=room
+    remember_peak_rooms()
+    start(room)
+    return room
+
+
+def takeover_showcase_bot(room,player):
+    """Toma o lugar EXATO de um bot, com sua mão/vez, após débito fictício."""
+    if not room.get('showcase') or room.get('wallet_type')!='test':
+        return 'Esta não é uma sala de bots.'
+    if player.get('room'):
+        return 'Saia da sala anterior antes de participar.'
+    if not joinable(room):
+        return 'Não há vagas de bots disponíveis nesta rodada.'
+    amount=room.get('stake',0)
+    if player.get('test_balance_cents',0)<amount:
+        return 'Saldo fictício insuficiente para essa entrada.'
+    bot=next((p for p in room['players'] if p['bot'] and not p['out']),None)
+    if bot is None:return 'Todos os lugares de bots já estão ocupados.'
+    # Cobra uma única vez por entrada. A quantia substitui a entrada simulada
+    # do bot; não soma novamente ao pote de quatro ou menos jogadores.
+    if amount:
+        try:
+            wallet_change(player,-amount,'Entrada fictícia na sala de bots '+room['code'],
+                event_key='showcase:'+room['code']+':'+str(room['round'])+':'+
+                          secrets.token_urlsafe(12)+':'+player['id'])
+        except (accounts.AccountError,psycopg.Error,ValueError):
+            return 'Não foi possível registrar a entrada no saldo fictício.'
+    index=room['players'].index(bot)
+    player['hand']=bot['hand']
+    player['strikes']=bot.get('strikes',0)
+    player['out']=bot.get('out',False)
+    player['spectator']=False
+    player['media']=False
+    player['room']=room['code']
+    room['players'][index]=player
+    if room.get('turn')==bot['id']:room['turn']=player['id']
+    if room.get('pending') and room['pending'].get('player')==bot['id']:
+        room['pending']['player']=player['id']
+    if room.get('host')==bot['id'] or not any(
+            p['id']==room['host'] and not p['bot'] for p in room['players']):
+        room['host']=player['id']
+    bot['hand']=[]
+    bot['room']=None
+    sync(room)
+    notice(room,player['name']+' assumiu as cartas de um bot. Entrada fictícia confirmada.')
+    return None
+
+
+def restore_showcase_bot(room,player,reason='desistiu'):
+    """Bot retoma a mesma mão/vez; saída não devolve saldo fictício."""
+    if not room.get('showcase') or player not in room['players']:
+        return False
+    index=room['players'].index(player)
+    bot=create_player(SHOWCASE_BOT_NAMES[index%len(SHOWCASE_BOT_NAMES)],None)
+    bot['id']='SHOWBOT'+room['code']+'R'+secrets.token_hex(5)
+    bot['bot']=True
+    bot['room']=room['code']
+    bot['hand']=player['hand']
+    bot['out']=player.get('out',False)
+    bot['strikes']=player.get('strikes',0)
+    bot['test_balance_cents']=TEST_START_BALANCE_CENTS
+    room['players'][index]=bot
+    if room.get('turn')==player['id']:room['turn']=bot['id']
+    if room.get('pending') and room['pending'].get('player')==player['id']:
+        room['pending']['player']=bot['id']
+    if room.get('host')==player['id']:
+        new_host=next((p for p in room['players'] if not p['bot']),None)
+        room['host']=new_host['id'] if new_host else room['players'][0]['id']
+    # O jogador mantém a perda da entrada já lançada no PostgreSQL.
+    player['hand']=[]
+    player['room']=None
+    player['media']=False
+    player['spectator']=False
+    room['proposal']=None
+    sync(room)
+    notice(room,player['name']+' '+reason+'; um bot assumiu suas cartas (sem reembolso fictício).')
+    bots_schedule(room)
+    return True
+
+
+async def expire_showcase_disconnect(room,player,old_socket):
+    await asyncio.sleep(25)
+    if (ROOMS.get(room['code']) is room and player in room['players']
+            and not active_ws(player) and player.get('ws') is None):
+        restore_showcase_bot(room,player,reason='desconectou por mais de 25 s')
+
+
+async def showcase_keeper():
+    """Recomeça rodadas apenas quando não houver humanos (nunca cobra renovação)."""
+    while True:
+        await asyncio.sleep(5)
+        for code,title,stake,count in SHOWCASE_SPECS:
+            try:
+                room=ROOMS.get(code)
+                if not room:
+                    make_showcase_room(code,title,stake,count)
+                    continue
+                if room.get('winner') and not any(not p['bot'] for p in room['players']):
+                    if time.monotonic()-room.get('finished_at',0)>=4:
+                        for bot in room['players']:
+                            bot['test_balance_cents']=TEST_START_BALANCE_CENTS
+                        start(room)
+            except Exception:
+                logging.getLogger('blefe.showcase').exception('Falha ao renovar mesa de bots %s',code)
+
+
+async def initialize_showcase_rooms(app):
+    for spec in SHOWCASE_SPECS:make_showcase_room(*spec)
+    app['showcase_task']=asyncio.create_task(showcase_keeper())
+
+
+async def cleanup_showcase_rooms(app):
+    task=app.get('showcase_task')
+    if task:
+        task.cancel()
+        try:await task
+        except asyncio.CancelledError:pass
+
+
 async def initialize_accounts(app):
     if not accounts.DATABASE_URL:
         # Não aprovar uma publicação que impediria todos de entrar no jogo.
@@ -1018,6 +1206,8 @@ async def initialize_accounts(app):
 
 app=web.Application(client_max_size=4096)
 app.on_startup.append(initialize_accounts)
+app.on_startup.append(initialize_showcase_rooms)
+app.on_cleanup.append(cleanup_showcase_rooms)
 app.router.add_get('/',index)
 app.router.add_post('/api/guest/start',api_guest_start)
 app.router.add_get('/api/shop/catalog',api_shop_catalog)
