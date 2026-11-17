@@ -263,6 +263,7 @@ async function refreshPublicRooms(){
       action.textContent='Ver entrada e participar';
       action.onclick=()=>{
         closePublicRooms();$('roomcode').value=room.code;
+        showHomeRoomPanel('join',true);
         previewRoom(room.code);
       };
       item.append(header,sub,action);list.append(item);
