@@ -42,3 +42,13 @@ O servidor usa **aiohttp** e WebSocket. Atualmente armazena várias informaçõe
 A nova interface inclui uma barra superior com o saldo de **teste** e botões de **Entrar / Criar conta / Sair**. A autenticação usa usuário e senha, sessão em cookie protegido e PostgreSQL; as senhas não são armazenadas em texto puro.
 
 **Antes de liberar esta alteração**, é necessário conectar o banco gratuito do Render por meio da variável secreta `DATABASE_URL`. Veja o [guia de contas e configuração](docs/CONTAS.md). O banco gratuito atual expira em **17/12/2026**, e é preciso planejar a migração antes dessa data. Os saldos são fictícios, sem depósito ou saque.
+
+## Visitantes e futuros depósitos
+
+- **Jogar com saldo fictício não exige cadastro:** o jogo cria uma sessão exclusiva do navegador com carteira de teste, mantida no PostgreSQL.
+- A carteira **não é associada ao IP**, pois IPs são compartilhados e variáveis. O IP só auxilia no controle de abuso; o acesso ao saldo exige cookie seguro.
+- Uma conta com login e senha continua separada da carteira de visitante.
+- O botão **Depositar** é mostrado apenas ao entrar em uma conta, mas permanece **informativo e desativado para dinheiro real**. O jogo não aceita depósitos, saques ou apostas reais.
+- **Criador:** Sugya (crédito do jogo, sem permissões automáticas por nome de usuário).
+
+Veja [regras e testes de visitantes e depósitos](docs/VISITANTES_E_DEPOSITOS.md).
