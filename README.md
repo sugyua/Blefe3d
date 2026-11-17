@@ -4,7 +4,7 @@ Jogo online de cartas e blefes para até quatro participantes, com salas públic
 
 🎮 **Jogar grátis:** https://blefe3d-teste.onrender.com/
 
-> **Atenção:** projeto em testes, com possíveis falhas. Entradas e prêmios exibidos no jogo são exclusivamente **saldos fictícios**; não existem depósitos, saques ou apostas com dinheiro real. A carteira ainda precisa de persistência antes de um beta público amplo.
+> **Atenção:** projeto em testes, com possíveis falhas. Entradas e prêmios exibidos no jogo são exclusivamente **saldos fictícios**; não existem depósitos, saques ou apostas com dinheiro real. As carteiras de teste ficam no PostgreSQL; as salas ainda ficam na memória do servidor.
 
 ## Instalar no celular (PWA)
 - **iPhone:** abrir no Safari, tocar em **Compartilhar → Adicionar à Tela de Início**.
@@ -26,7 +26,7 @@ python -m unittest discover -s tests -v
 python server.py
 ```
 
-O servidor usa **aiohttp** e WebSocket. Atualmente armazena várias informações em memória; reiniciar a instância pode zerar sessões e saldos. Antes de qualquer operação com dinheiro real, o projeto exigiria revisão legal e arquitetura adequada.
+O servidor usa **aiohttp** e WebSocket. As salas ainda são mantidas em memória e podem ser encerradas em reinícios; contas e saldos fictícios ficam no PostgreSQL. Antes de qualquer operação com dinheiro real, o projeto exigiria revisão legal e arquitetura adequada.
 
 ## Planejamento e divulgação
 - [Roadmap das próximas 20 atualizações (0.10–0.29)](ROADMAP.md)
@@ -37,11 +37,11 @@ O servidor usa **aiohttp** e WebSocket. Atualmente armazena várias informaçõe
 
 **Os materiais de divulgação estão preparados, mas não foram publicados automaticamente em contas externas.**
 
-## Contas de jogador (versão em preparação)
+## Contas de jogador
 
 A nova interface inclui uma barra superior com o saldo de **teste** e botões de **Entrar / Criar conta / Sair**. A autenticação usa usuário e senha, sessão em cookie protegido e PostgreSQL; as senhas não são armazenadas em texto puro.
 
-**Antes de liberar esta alteração**, é necessário conectar o banco gratuito do Render por meio da variável secreta `DATABASE_URL`. Veja o [guia de contas e configuração](docs/CONTAS.md). O banco gratuito atual expira em **17/12/2026**, e é preciso planejar a migração antes dessa data. Os saldos são fictícios, sem depósito ou saque.
+A conexão entre o Render e PostgreSQL usa a variável secreta `DATABASE_URL`. Veja o [guia de contas e configuração](docs/CONTAS.md). O banco gratuito atual expira em **17/12/2026**, e é preciso planejar a migração antes dessa data. Os saldos são fictícios, sem depósito ou saque.
 
 ## Visitantes e futuros depósitos
 
