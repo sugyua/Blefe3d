@@ -892,14 +892,13 @@ async def public_config(request):
 
 async def initialize_accounts(app):
     if not accounts.DATABASE_URL:
-        # Sem banco, o acesso falha de maneira segura; não criar carteiras
-        # temporárias que desapareceriam após o próximo deploy.
-        logging.getLogger('blefe.auth').error('DATABASE_URL não configurado: login indisponível.')
-        return
+        # Não aprovar uma publicação que impediria todos de entrar no jogo.
+        raise RuntimeError('DATABASE_URL não configurado: configure o PostgreSQL no Render antes do deploy.')
     try:
         await asyncio.to_thread(accounts.setup)
     except Exception:
         logging.getLogger('blefe.auth').exception('Falha na inicialização do banco de contas.')
+        raise
 
 
 app=web.Application(client_max_size=4096)
