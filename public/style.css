@@ -277,3 +277,18 @@
 .trainingOptions select{width:100%;appearance:auto;-webkit-appearance:menulist;background:#2b4355;color:white;border:1px solid #597c96;border-radius:8px;padding:10px 8px;font-size:13px}
 .trainingOptions small{font-size:11px;line-height:1.45;color:#f4cea0}
 .trainingOptions button{width:100%}
+
+
+/* Novos jogadores e instalacao do Blefe Color sem loja */
+.pwaButtons{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 12px}
+.pwaButtons button{padding:10px 5px;font-size:12px;min-width:0}
+.pwaButtons .pwaInstall{background:linear-gradient(120deg,#147b63,#2aaf77);color:#fff;border-color:#65c99b}
+.pwaDialog{max-height:min(86dvh,740px);overflow-y:auto;width:min(94vw,440px)!important;text-align:left}
+.pwaDialog h2{font-size:clamp(24px,7vw,30px);line-height:1.12;color:#ffdfa0;margin:7px 0 13px}
+.pwaDialog p{font-size:13px;line-height:1.6;color:#d8e3ef;margin:0 0 11px}
+.pwaDialog button{display:block;width:100%;margin-top:8px;min-height:43px}
+.pwaEyebrow{color:#8fe4c1;letter-spacing:2px;font-size:11px;font-weight:900}
+.introSteps{display:flex;flex-direction:column;gap:9px;margin:14px 0;padding:12px 11px;background:#172b41;border:1px solid #506c8e;border-radius:13px}
+.introSteps span{font-size:13px;color:#f3f8ff;line-height:1.4}
+.pwaDialog .introWarning{background:#1b312b;color:#baeacf;padding:10px 12px;border-radius:9px;font-size:11px;line-height:1.4}
+@media(max-width:380px){.pwaButtons{grid-template-columns:1fr 1fr}.pwaButtons button{font-size:11px;padding:9px 3px}}

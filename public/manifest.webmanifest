@@ -1,0 +1,37 @@
+{
+  "id": "/",
+  "name": "Blefe Color — Jogo de Blefe",
+  "short_name": "Blefe Color",
+  "description": "Cartas, blefes e partidas entre amigos. Jogue gratuitamente com saldo fictício.",
+  "lang": "pt-BR",
+  "start_url": "/?origem=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b1527",
+  "theme_color": "#10213d",
+  "orientation": "portrait",
+  "categories": [
+    "games",
+    "entertainment"
+  ],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

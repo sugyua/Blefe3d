@@ -3,6 +3,7 @@ import asyncio, json, random, secrets, string, time, os, hmac, resource, logging
 from collections import deque
 from pathlib import Path
 from aiohttp import web, WSMsgType
+from pwa_icons import icon_png
 
 ROOT = Path(__file__).parent / 'public'
 ROOMS = {}
@@ -574,7 +575,25 @@ async def websocket(request):
                     notice(r,f"{p['name']} desconectou (pode reconectar).")
     return ws
 
-async def index(request):return web.FileResponse(ROOT/'index.html')
+async def index(request):
+    return web.FileResponse(ROOT/'index.html',headers={'Cache-Control':'no-store'})
+
+async def pwa_manifest(request):
+    return web.FileResponse(ROOT/'manifest.webmanifest',headers={'Content-Type':'application/manifest+json','Cache-Control':'public, max-age=3600'})
+
+async def pwa_service_worker(request):
+    return web.FileResponse(ROOT/'sw.js',headers={
+        'Content-Type':'text/javascript','Cache-Control':'no-cache',
+        'Service-Worker-Allowed':'/'})
+
+async def pwa_icon(request):
+    try:
+        size=int(request.match_info['size'])
+        png=icon_png(size)
+    except (ValueError,KeyError):
+        raise web.HTTPNotFound()
+    return web.Response(body=png,content_type='image/png',headers={'Cache-Control':'public,max-age=604800'})
+
 async def health(request):return web.json_response({'ok':True,'rooms':len(ROOMS)})
 
 async def room_preview(request):
@@ -677,6 +696,9 @@ async def public_config(request):
 
 app=web.Application()
 app.router.add_get('/',index)
+app.router.add_get('/manifest.webmanifest',pwa_manifest)
+app.router.add_get('/sw.js',pwa_service_worker)
+app.router.add_get('/icons/icon-{size}.png',pwa_icon)
 app.router.add_get('/ws',websocket)
 app.router.add_get('/health',health)
 app.router.add_get('/config',public_config)
