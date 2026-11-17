@@ -14,6 +14,19 @@ Jogo online de cartas e blefes para até quatro participantes, com salas públic
 - O modo PWA fornece ícone e experiência sem barras de navegador; **partidas ainda exigem internet**.
 - A instalação é gratuita; não está na App Store nem na Google Play.
 
+## Nova regra de blefe: declarar ação **e** cor
+
+Em uma carta de ação colocada virada para baixo, o jogador (e os bots no treinamento) deve declarar **a ação e a cor**. O próximo jogador pode **acreditar** ou **duvidar**. Ao duvidar, o servidor revela a carta e confere a ação **e** a cor declaradas; se qualquer uma for falsa, o blefador compra **1 carta**, e uma pilha +2/+4 é cancelada.
+
+**Exemplo:** sobre um **2 verde**, alguém coloca um **+2 vermelho** virado para baixo e declara **+2 verde**. A ação é verdadeira, mas a cor é falsa: se o próximo jogador duvidar, quem jogou compra **1 carta**. Declarar **+2 vermelho** sobre o 2 verde também constitui um blefe de jogada inválida, pois a declaração não respeita a cor da mesa.
+
+- **Ações normais** (+2, bloqueio e inverter): a declaração só é verdadeira se a ação e a cor forem as reais e, fora de pilhas, a cor declarada for válida para a mesa.
+- **+4 (carta selvagem) e coringa comum:** permitem **escolher livremente** a nova cor; essa escolha não é blefe por si só.
+- **Pilha de +2/+4:** continua possível empilhar cartas de compra de qualquer cor, mas o jogador precisa declarar corretamente a cor física da carta normal se quiser falar a verdade. O jogador que descobrir uma mentira cancela a pilha; o último declarante compra **1 carta**.
+- **Dúvida errada:** quem duvida compra 1 carta nas ações normais, ou toda a pilha de compra acumulada **mais 1**, mantendo o comportamento anterior.
+- **Partidas contra bots:** os bots também declaram ação e cor, podendo blefar em ambas as informações.
+- Todos os efeitos se aplicam apenas a cartas de jogo e saldos **fictícios**. Depósitos e apostas reais continuam desativados.
+
 ## Como jogar
 1. Comece no treinamento grátis contra três bots.
 2. Jogue uma carta que combine com a cor ou número da mesa.

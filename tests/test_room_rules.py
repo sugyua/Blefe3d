@@ -102,11 +102,11 @@ class BotRoomRulesTests(unittest.IsolatedAsyncioTestCase):
         first['hand'] = [{'id': 'a', 'rank': 'draw2', 'color': 'red'}, {'id': 'x', 'rank': '1', 'color': 'red'}]
         second['hand'] = [{'id': 'b', 'rank': 'draw4', 'color': 'wild'}, {'id': 'y', 'rank': '1', 'color': 'red'}]
         room['deck'] = [{'id': str(i), 'rank': '1', 'color': 'blue'} for i in range(10)]
-        self.assertIsNone(game.play(room, first, ['a'], 'draw2'))
-        self.assertIsNone(game.play(room, second, ['b'], 'draw2'))
+        self.assertIsNone(game.play(room, first, ['a'], 'draw2', 'red'))
+        self.assertIsNone(game.play(room, second, ['b'], 'draw2', 'red'))
         self.assertEqual(room['draw_stack'], 4)
         self.assertIsNone(game.resolve(room, third, True))
-        self.assertEqual(len(second['hand']), 3)
+        self.assertEqual(len(second['hand']), 2)
         self.assertEqual(room['draw_stack'], 0)
         self.assertEqual(room['turn'], third['id'])
 
@@ -122,7 +122,7 @@ class BotRoomRulesTests(unittest.IsolatedAsyncioTestCase):
         second['hand'] = [{'id': 'b', 'rank': 'draw4', 'color': 'wild'}, {'id': 'y', 'rank': '1', 'color': 'red'}]
         third['hand'] = [{'id': 'z', 'rank': '1', 'color': 'blue'}]
         room['deck'] = [{'id': str(i), 'rank': '1', 'color': 'blue'} for i in range(10)]
-        self.assertIsNone(game.play(room, first, ['a'], 'draw2'))
+        self.assertIsNone(game.play(room, first, ['a'], 'draw2', 'red'))
         self.assertIsNone(game.play(room, second, ['b'], 'draw4', 'blue'))
         self.assertIsNone(game.resolve(room, third, True))
         self.assertEqual(len(third['hand']), 8)
@@ -138,8 +138,8 @@ class BotRoomRulesTests(unittest.IsolatedAsyncioTestCase):
         room['color'] = 'red'
         first['hand'] = [{'id': 'a', 'rank': 'draw2', 'color': 'red'}]
         second['hand'] = [{'id': 'b', 'rank': '1', 'color': 'red'}]
-        self.assertIsNone(game.play(room, first, ['a'], 'draw2'))
-        self.assertIsNotNone(game.play(room, second, ['b'], 'draw2'))
+        self.assertIsNone(game.play(room, first, ['a'], 'draw2', 'red'))
+        self.assertIsNotNone(game.play(room, second, ['b'], 'draw2', 'red'))
         self.assertEqual(room['draw_stack'], 2)
         self.assertEqual(len(second['hand']), 1)
 

@@ -330,14 +330,29 @@ updateWalletUI();
 
 $('helpBtn').onclick=()=>{$('guide').hidden=false};$('closeGuide').onclick=()=>{$('guide').hidden=true};$('closeReplay').onclick=closeReplay;
 function openDeclaration(stack=false,chosen=null){
+  // Passo 1: ação; passo 2: cor. Nunca enviar declaração incompleta.
   state.claim=chosen;
-  const grid=document.querySelector('#claimPanel .claimGrid');
-  grid.hidden=chosen==='wild';
+  state.selectedColor=null;
   for(const button of document.querySelectorAll('[data-claim]')){
-    button.hidden=stack&&button.dataset.claim!=='draw2'&&button.dataset.claim!=='draw4';
+    button.hidden=stack&&!['draw2','draw4'].includes(button.dataset.claim);
   }
-  $('colors').hidden=chosen!=='draw4'&&chosen!=='wild';
+  $('claimActions').hidden=!!chosen;
+  $('claimStep').hidden=!!chosen;
+  $('claimColorPrompt').hidden=!chosen;
+  $('colors').hidden=!chosen;
+  for(const button of document.querySelectorAll('[data-color]'))button.style.outline='';
   $('claimPanel').hidden=false;
+}
+function closeDeclaration(){
+  $('claimPanel').hidden=true;
+  state.claim=null;state.selectedColor=null;
+}
+function submitDeclaredColor(color){
+  if(!state.claim){toast('Primeiro escolha uma ação.');return}
+  if(!['red','green','blue','yellow'].includes(color))return;
+  const claim=state.claim==='wild'?null:state.claim;
+  send('play',{cards:[...state.selected],claim,color});
+  closeDeclaration();
 }
 $('play').onclick=()=>{
   if(!state.selected.size)return;
@@ -345,13 +360,12 @@ $('play').onclick=()=>{
   if(!c)return;
   const stack=!!state.room?.pending&&state.room?.draw_stack>0;
   if(stack){
-    if(c.rank==='draw2'){send('play',{cards:[...state.selected],claim:'draw2'});return}
+    if(c.rank==='draw2'){openDeclaration(true,'draw2');return}
     if(c.rank==='draw4'){openDeclaration(true,'draw4');return}
     toast('Para empilhar outra carta, use BLEFAR PILHA.');return;
   }
   if(['skip','draw2','reverse','draw4'].includes(c.rank)){
-    if(c.rank==='draw4')openDeclaration(false,'draw4');
-    else send('play',{cards:[...state.selected],claim:c.rank});
+    openDeclaration(false,c.rank);
     return;
   }
   if(c.rank==='wild'){openDeclaration(false,'wild');return}
@@ -392,9 +406,19 @@ $('copyInvite').onclick=async()=>{
   try{await navigator.clipboard.writeText(message);toast('Convite com código e valor copiado!')}
   catch(error){window.prompt('Copie e envie o convite:',message)}
 };
-$('cancelClaim').onclick=()=>{$('claimPanel').hidden=true;state.claim=null;document.querySelector('#claimPanel .claimGrid').hidden=false};
-for(const el of document.querySelectorAll('[data-color]')){el.onclick=()=>{state.selectedColor=el.dataset.color;for(const b of document.querySelectorAll('[data-color]'))b.style.outline=b===el?'3px solid white':'';if(state.claim||document.querySelector('#claimPanel .claimGrid').hidden){send('play',{cards:[...state.selected],claim:state.claim,color:state.selectedColor});$('claimPanel').hidden=true;state.claim=null;document.querySelector('#claimPanel .claimGrid').hidden=false}}}
-for(const el of document.querySelectorAll('[data-claim]')){el.onclick=()=>{state.claim=el.dataset.claim;if(state.claim==='draw4'){$('colors').hidden=false;toast('Selecione a cor do +4.')}else{send('play',{cards:[...state.selected],claim:state.claim,color:state.selectedColor});$('claimPanel').hidden=true;state.claim=null}}};
+$('cancelClaim').onclick=closeDeclaration;
+for(const el of document.querySelectorAll('[data-color]')){
+  el.onclick=()=>submitDeclaredColor(el.dataset.color);
+}
+for(const el of document.querySelectorAll('[data-claim]')){
+  el.onclick=()=>{
+    state.claim=el.dataset.claim;
+    $('claimActions').hidden=true;
+    $('claimStep').hidden=true;
+    $('claimColorPrompt').hidden=false;
+    $('colors').hidden=false;
+  };
+}
 function makeCard(c){const el=document.createElement('div');el.className='card uno '+(c.color||'wild');const b=document.createElement('b');b.textContent=({skip:'⊘',draw2:'+2',draw4:'+4',reverse:'⇄',wild:'★'})[c.rank]||c.rank;el.append(b);return el}
 function render(){const s=state.room;if(!s)return;
 $('lobby').hidden=true;$('game').hidden=false;$('roomLabel').textContent=s.mode==='training'?'TREINAMENTO':'SALA '+s.code;$('waiting').hidden=s.started;
@@ -402,7 +426,11 @@ const me=s.players.find(p=>p.id===state.id),actor=s.players.find(p=>p.id===s.tur
 $('turnBanner').textContent=winner?'🏆 '+winner.name+' VENCEU!':!s.started?'AGUARDANDO JOGADORES':me?.spectator?'👁 ASSISTINDO À PARTIDA':myturn?'🟡 SUA VEZ DE JOGAR':'⏳ VEZ DE '+(actor?.name?.toUpperCase()||'...');
 $('turnBanner').classList.toggle('myturn',myturn);
 $('strikes').textContent=state.hand.length+' CARTAS';
-$('tableTarget').querySelector('b').textContent=s.draw_stack>0?('PILHA +'+s.draw_stack+' • '+s.stack_count+' '+(s.stack_count===1?'CARTA':'CARTAS')):s.pending?('CARTA OCULTA — '+(ACAO[s.pending.claim]||s.pending.claim)):((s.top?.rank==='hidden'?'CARTA OCULTA':(ACAO[s.top?.rank]||s.top?.rank||'—'))+' • '+(COR[s.color]||'—'));
+$('tableTarget').querySelector('b').textContent=s.draw_stack>0
+  ?('PILHA +'+s.draw_stack+' • '+(ACAO[s.pending?.claim]||'AÇÃO')+' '+(COR[s.pending?.color]||''))
+  :s.pending
+    ?('CARTA OCULTA — '+(ACAO[s.pending.claim]||s.pending.claim)+' '+(COR[s.pending.color]||''))
+    :((s.top?.rank==='hidden'?'CARTA OCULTA':(ACAO[s.top?.rank]||s.top?.rank||'—'))+' • '+(COR[s.color]||'—'));
 $('tableCards').replaceChildren();
 if(s.pending||s.top?.rank==='hidden'){
   for(let i=0;i<Math.max(1,Math.min(6,s.stack_count||1));i++){
@@ -625,8 +653,8 @@ function showReplay(r){
     modal.classList.add('showResult',acertou?'correct':'incorrect');
     $('replayTitle').textContent=acertou?'ACERTOU AO DUVIDAR!':'ERROU AO DUVIDAR!';
     $('verdictEyebrow').textContent=acertou?'ERA BLEFE!':'ERA VERDADE!';
-    $('replayText').textContent=nome+' desconfiou de '+r.accused+'. A carta real era '+nomeCarta(card)+', e a declaração foi '+(ACAO[r.claim]||r.claim)+'.';
-    $('penaltyLabel').textContent=r.loser+' comprou '+(r.penalty||2)+' carta(s).'+(r.stack_count>1?(r.lie?' A pilha foi cancelada.':' Pilha de +'+r.stack_total+' mais uma.'):'');
+    $('replayText').textContent=nome+' desconfiou de '+r.accused+'. Carta real: '+nomeCarta(card)+'. Declaração: '+(ACAO[r.claim]||r.claim)+' '+(COR[r.claim_color]||r.claim_color||'')+'.';
+    $('penaltyLabel').textContent=r.loser+' comprou '+(r.penalty??1)+' carta(s).'+(r.stack_count>1?(r.lie?' A pilha foi cancelada.':' Pilha de +'+r.stack_total+' mais uma.'):'');
   },1250));
   state.revealTimers.push(setTimeout(()=>closeReplay(),6500));
 }

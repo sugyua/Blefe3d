@@ -277,10 +277,22 @@ def reset_stack(room):
     room['stack_count']=0
 
 def pending_truth(room,q):
+    """Blefe só é verdadeiro quando AÇÃO E COR declaradas são verdadeiras.
+
+    +4 é uma carta selvagem: sua cor pode ser escolhida livremente.
+    Para outras ações, a cor declarada deve ser a cor física da carta.
+    Fora de pilhas, a declaração precisa respeitar a cor vigente da mesa.
+    Durante pilha +2/+4, a restrição de cor da mesa é suspensa,
+    mas a cor física ainda precisa ser declarada corretamente.
+    """
     card=q['card']
-    # On a stack the original color restriction is lifted for declared draw cards.
-    return card['rank']==q['claim'] and (
-        q.get('stacked',False) or card['color']==q.get('before_color') or card['color']=='wild')
+    declared=q.get('color')
+    if declared not in COLORS or card['rank']!=q['claim']:
+        return False
+    if q['claim']=='draw4':
+        return card['color']=='wild'
+    return (card['color']==declared and
+            (q.get('stacked',False) or declared==q.get('before_color')))
 
 def play(room,p,ids,claim=None,newcolor=None):
     if p.get('spectator',False) or room['winner'] or room['turn']!=p['id']:
@@ -300,12 +312,12 @@ def play(room,p,ids,claim=None,newcolor=None):
         if claim not in ACTIONS:return 'Declaração inválida.'
         if previous and claim not in ('draw2','draw4'):
             return 'Só é permitido empilhar +2 ou +4.'
-        if claim=='draw4':
-            if newcolor not in COLORS:return 'Escolha uma cor para o +4.'
-            targetcolor=newcolor
-        else:
-            # Preserve the color selected by the latest +4 in this draw chain.
-            targetcolor=previous['color'] if previous else room['color']
+        # Toda ação oculta precisa declarar uma cor. +4 pode escolher
+        # qualquer cor; as demais podem MENTIR sobre a cor, mas serão
+        # penalizadas se a carta ou a cor forem falsas na contestação.
+        if newcolor not in COLORS:
+            return 'Escolha a cor que você está declarando.'
+        targetcolor=newcolor
         before_color=room['color']
         if previous:
             # The older hidden card stays in the discard pile without being revealed.
@@ -322,12 +334,12 @@ def play(room,p,ids,claim=None,newcolor=None):
         room['last']=None
         room['move_serial']+=1
         room['move']={'id':room['move_serial'],'player':p['id'],'name':p['name'],
-                      'hidden':True,'claim':claim,'stack_total':room['draw_stack']}
+                      'hidden':True,'claim':claim,'color':targetcolor,'stack_total':room['draw_stack']}
         if claim in ('draw2','draw4'):
-            notice(room,f"{p['name']} declarou {LABEL[claim]} com carta virada para baixo. "
+            notice(room,f"{p['name']} declarou {LABEL[claim]} ({targetcolor}) com carta virada para baixo. "
                         f"Pilha: +{room['draw_stack']}.")
         else:
-            notice(room,p['name']+' declarou '+LABEL[claim]+' com carta virada para baixo.')
+            notice(room,p['name']+' declarou '+LABEL[claim]+' ('+targetcolor+') com carta virada para baixo.')
         sync(room);bots_schedule(room)
         return None
     if card['rank'] in ACTIONS:
@@ -360,7 +372,8 @@ def resolve(room,p,doubt):
     room['discard'].append(actual);room['top']=actual
     room['last']={'accuser':p['name'],'accused':actor['name'],'lie':not truthful,
                   'cards':[actual],'loser':actor['name'] if not truthful else p['name'],
-                  'out':False,'claim':claim,'accepted':not doubt,'penalty':0,
+                  'out':False,'claim':claim,'claim_color':q['color'],
+                  'before_color':q.get('before_color'),'accepted':not doubt,'penalty':0,
                   'stack_total':stack_total,'stack_count':count}
     if doubt:
         room.setdefault('public_events',deque(maxlen=100)).append({'at':int(time.time()),'text':f"Carta revelada: {actual['rank']} ({actual['color']})."})
@@ -377,13 +390,13 @@ def resolve(room,p,doubt):
             reset_stack(room)
             finalize(room,actor)
         else:
-            # Caught lie cancels the whole pile; only the last claimant draws two.
-            draw(room,actor,2)
-            room['last']['penalty']=2
+            # Blefe descoberto: uma carta ao último declarante; cancela a pilha.
+            draw(room,actor,1)
+            room['last']['penalty']=1
             room['turn']=p['id']
             room['hidden_top']=False
             reset_stack(room)
-            notice(room,actor['name']+' blefou e comprou 2 cartas. Pilha cancelada!')
+            notice(room,actor['name']+' mentiu na ação ou na cor e comprou 1 carta. Pilha cancelada!')
         send_room(room,'reveal',result=room['last'])
         sync(room);bots_schedule(room)
         return None
@@ -427,12 +440,16 @@ def bots_schedule(room):
                 stack_cards=[c for c in bot['hand'] if c['rank'] in ('draw2','draw4')]
                 if stack_cards and random.random()<.72:
                     c=random.choice(stack_cards)
-                    play(r,bot,[c['id']],c['rank'],random.choice(COLORS))
+                    # O bot honesto declara a cor física de +2 ou escolhe
+                    # uma nova cor livremente com +4.
+                    declared_color=c['color'] if c['rank']!='draw4' else random.choice(COLORS)
+                    play(r,bot,[c['id']],c['rank'],declared_color)
                 elif stack_cards and random.random()<.12:
-                    # A bot may bluff about whether its draw card is +2 or +4.
+                    # O bot pode blefar sobre +2/+4 e também a cor.
                     c=random.choice(stack_cards)
                     opposite='draw4' if c['rank']=='draw2' else 'draw2'
-                    play(r,bot,[c['id']],opposite,random.choice(COLORS))
+                    declared_color=random.choice(COLORS)
+                    play(r,bot,[c['id']],opposite,declared_color)
                 else:
                     resolve(r,bot,random.random()<.26)
             else:
@@ -444,10 +461,16 @@ def bots_schedule(room):
         if actions and random.random()<.33:
             card=random.choice(actions)
             claim=card['rank'] if random.random()<.78 else random.choice(ACTIONS)
-            play(r,bot,[card['id']],claim,random.choice(COLORS));return
+            declared_color=(card['color'] if card['color']!='wild' else random.choice(COLORS))
+            if random.random()<.24:
+                # A IA também blefa a cor; não conhece a mão dos adversários.
+                declared_color=random.choice([color for color in COLORS if color!=declared_color])
+            play(r,bot,[card['id']],claim,declared_color);return
         if playable:
             card=random.choice(playable)
-            if card['rank'] in ACTIONS:play(r,bot,[card['id']],card['rank'],random.choice(COLORS))
+            if card['rank'] in ACTIONS:
+                declared_color=(card['color'] if card['color']!='wild' else random.choice(COLORS))
+                play(r,bot,[card['id']],card['rank'],declared_color)
             else:play(r,bot,[card['id']],None,random.choice(COLORS))
         else:draw_turn(r,bot)
     asyncio.create_task(move(room['code'],current['id']))
