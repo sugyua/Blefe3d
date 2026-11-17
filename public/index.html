@@ -1,8 +1,9 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#10213d"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Blefe Color"><meta name="application-name" content="Blefe Color"><meta name="description" content="Jogo de cartas coloridas com blefe, partidas online entre amigos e treino grátis. Sem dinheiro real."><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png"><link rel="icon" type="image/svg+xml" href="/static/icon.svg"><title>Blefe Color — Testes</title><link rel="stylesheet" href="/static/style.css?v=20261117auth01"></head><body>
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#10213d"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Blefe Color"><meta name="application-name" content="Blefe Color"><meta name="description" content="Jogo de cartas coloridas com blefe, partidas online entre amigos e treino grátis. Sem dinheiro real."><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png"><link rel="icon" type="image/svg+xml" href="/static/icon.svg"><title>Blefe Color — Testes</title><link rel="stylesheet" href="/static/style.css?v=20261117guest01"></head><body>
 <div id="accountBar" class="accountBar" role="banner">
   <div class="accountLogo">♠ <span>BLEFE</span> COLOR</div>
   <div class="accountControls">
     <div class="accountBalance"><span>SALDO DE TESTE</span><strong id="topBalance">—</strong></div>
+    <button id="depositButton" class="depositButton" hidden>Depositar</button>
     <button id="authButton" class="accountLogin">Entrar / Criar conta</button>
     <span id="authGreeting" class="accountGreeting" hidden></span>
     <button id="authLogout" class="accountLogout" hidden>Sair</button>
@@ -10,7 +11,7 @@
 </div>
 <div id="app">
  <section id="lobby" class="overlay"><div class="welcome"><div class="brand">♠ BLEFE <span>COLOR</span></div><p>Jogue, desconfie e descubra quem está mentindo.</p><div class="lobbyTools"><button id="openWallet">Carteira</button><button id="openDonation">Apoiar via Pix</button></div>
-<div class="pwaButtons"><button id="installApp" class="pwaInstall">Instalar jogo no celular</button><button id="showGuideFromLobby">Como começar?</button></div><p id="lobbyIdentity" class="lobbyIdentity">Entre ou crie sua conta para jogar e proteger seu saldo fictício.</p><div class="stack">
+<div class="pwaButtons"><button id="installApp" class="pwaInstall">Instalar jogo no celular</button><button id="showGuideFromLobby">Como começar?</button></div><p id="lobbyIdentity" class="lobbyIdentity">Você pode jogar com saldo fictício sem criar conta. Para proteger o saldo entre dispositivos, faça login.</p><div class="stack">
 <button id="publicBrowse" class="primary">Encontrar salas públicas</button>
 <div class="trainingOptions">
   <label for="trainingStake">Treino contra bots — entrada com saldo fictício</label>
@@ -52,7 +53,7 @@
 </div>
 <button id="create">Criar sala privada</button>
 <div class="join"><input id="roomcode" maxlength="6" placeholder="CÓDIGO DA SALA" autocapitalize="characters"><button id="join">Entrar</button></div>
-<div id="joinPreview" class="joinPreview" aria-live="polite" hidden></div></div><small>Contas protegidas • Testes • Sem dinheiro real</small><footer class="moderationFooter" aria-label="Aviso de moderação"><p>As partidas podem ser acompanhadas pela moderação. O acompanhamento não inclui áudio ou vídeo; qualquer transmissão futura à administração exigirá consentimento claro dos participantes.</p></footer></div></section>
+<div id="joinPreview" class="joinPreview" aria-live="polite" hidden></div></div><small>Criado por Sugya • Testes • Sem dinheiro real</small><footer class="moderationFooter" aria-label="Aviso de moderação"><p>As partidas podem ser acompanhadas pela moderação. O acompanhamento não inclui áudio ou vídeo; qualquer transmissão futura à administração exigirá consentimento claro dos participantes.</p></footer></div></section>
  <section id="game" hidden>
   <header><div><strong>BLEFE COLOR</strong><small id="roomLabel"></small></div><div class="headActions"><button id="gameWallet" class="gameWallet" title="Consultar carteira">R$ 50,00</button><span id="connection">● Conectando</span><button id="helpBtn" title="Regras">?</button><button id="leaveBtn" title="Sair">✕</button></div></header>
   <div id="topArea"><div id="turnBanner">Aguardando jogadores...</div><div id="peerCameras" class="peerCameras"></div><div class="mediaButtons"><button id="voiceBtn">🎙 Ativar voz</button><button id="camBtn">📷 Câmera</button><button id="micBtn" disabled>🔊 Microfone ligado</button></div></div>
@@ -68,11 +69,20 @@
     <div id="publicRoomsList" class="publicRoomsList" aria-live="polite">Buscando salas...</div>
   </div>
 </div>
+<div id="depositModal" class="modal" hidden>
+  <div class="modalInner depositDialog" role="dialog" aria-modal="true" aria-labelledby="depositTitle">
+    <span class="authEyebrow">CARTEIRA REAL • INDISPONÍVEL</span>
+    <h2 id="depositTitle">Depósitos ainda não disponíveis</h2>
+    <p>Este botão é uma prévia da futura área de depósitos. O Blefe Color não recebe dinheiro para apostas, não processa Pix ou cartões e não oferece saques.</p>
+    <p>Seu saldo de teste continua separado e não pode ser trocado por dinheiro real.</p>
+    <button id="closeDeposit" class="primary">Voltar ao jogo</button>
+  </div>
+</div>
 <div id="authModal" class="modal" hidden>
   <div class="modalInner authDialog" role="dialog" aria-modal="true" aria-labelledby="authTitle">
     <span class="authEyebrow">BLEFE COLOR · CONTA PROTEGIDA</span>
     <h2 id="authTitle">Entrar na conta</h2>
-    <p id="authIntro">Faça login para acessar suas partidas e seu saldo fictício.</p>
+    <p id="authIntro">Cadastre-se para proteger seu saldo fictício e continuar em outros dispositivos. Jogar como visitante também é gratuito.</p>
     <form id="authForm" autocomplete="on">
       <label for="authUsername">Nome de usuário</label>
       <input id="authUsername" name="username" type="text" minlength="3" maxlength="24" pattern="[a-zA-Z0-9_]{3,24}" autocapitalize="none" autocomplete="username" spellcheck="false" placeholder="Seu usuário" required>
@@ -83,7 +93,7 @@
     </form>
     <button id="authSwitch" class="authSwitch">Ainda não tenho conta · Criar conta</button>
     <button id="authClose" class="authClose">Voltar ao menu</button>
-    <p class="authNotice">Saldo apenas para teste, sem valor monetário ou saques. Não compartilhe sua senha. A recuperação de senha por e-mail ainda não está disponível.</p>
+    <p class="authNotice">Saldo apenas para teste, sem valor monetário ou saques. O saldo da sessão de visitante é separado da carteira da sua conta. Não compartilhe sua senha. Ainda não há recuperação de senha por e-mail.</p>
   </div>
 </div><div id="welcomeGuide" class="modal" hidden>
   <div class="modalInner pwaDialog" role="dialog" aria-modal="true" aria-labelledby="welcomeGuideTitle">
@@ -160,4 +170,4 @@
   </div>
  </div>
  <div id="guide" class="modal" hidden><div class="modalInner"><h2>Como jogar</h2><p>1. Cada jogador recebe sete cartas. Combine a cor ou o número da carta da mesa.</p><p>2. As cartas de ação são jogadas viradas para baixo. Você declara BLOQUEIO, +2, +4 ou INVERTER e pode blefar.</p><p>3. Ao receber um +2 ou +4, você pode empilhar outro +2 ou +4 que esteja na sua mão. A carta empilhada continua virada para baixo: você pode declarar +2 ou +4 e até blefar sobre seu valor.</p><p>4. A pilha soma todas as compras: +2, +4, +6, +8 e assim por diante. Quem não tiver +2 ou +4 deve aceitar e comprar tudo, ou duvidar da última declaração.</p><p>5. Se duvidar errado, compre a pilha inteira e mais uma carta. Se descobrir mentira, o último jogador compra duas cartas e a pilha é cancelada.</p><p>6. Vence quem ficar sem cartas. Fora de uma pilha, você pode comprar uma carta e passar a vez.</p><button id="closeGuide">Entendi</button></div></div>
-</div><script src="/static/app.js?v=20261117auth01" defer></script><script src="/static/pwa.js?v=20261117pwa1" defer></script></body></html>
+</div><script src="/static/app.js?v=20261117guest01" defer></script><script src="/static/pwa.js?v=20261117pwa1" defer></script></body></html>
