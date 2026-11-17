@@ -42,7 +42,34 @@ class WelcomeScreenTests(unittest.TestCase):
         for button_id in ("welcomeTraining", "welcomePublic", "welcomeClose"):
             self.assertIn("'"+button_id+"'", self.pwa)
         self.assertIn("'publicBrowse'", self.pwa)
-        self.assertIn("'trainingStake'", self.pwa)
+        self.assertIn("'trainingFree'", self.pwa)
+
+
+    def test_mobile_lobby_prioritizes_four_actions_and_hides_extras(self):
+        start = self.html.index('<section id="lobby" class="overlay">')
+        end = self.html.index(' <section id="game" hidden>', start)
+        lobby = self.html[start:end]
+        self.assertIn('id="trainingFree"', lobby)
+        self.assertIn('id="publicBrowse"', lobby)
+        self.assertIn('id="showCreateRoom"', lobby)
+        self.assertIn('id="showJoinRoom"', lobby)
+        self.assertIn('id="createRoomPanel" class="homeInlinePanel" hidden', lobby)
+        self.assertIn('id="joinRoomPanel" class="homeInlinePanel" hidden', lobby)
+        self.assertIn('<details id="homeMoreMenu"', lobby)
+        for action in ('openShop','openWallet','openDonation',
+                       'showGuideFromLobby','installApp','training'):
+            self.assertIn('id="'+action+'"', lobby)
+        self.assertIn('<option value="0" selected>Grátis', lobby)
+        self.assertIn('Privacidade e moderação', lobby)
+
+    def test_invitation_and_lobby_shortcuts_stay_connected(self):
+        script = (PUBLIC / "app.js").read_text(encoding="utf-8")
+        self.assertIn("showHomeRoomPanel('join',true)", script)
+        self.assertIn("showHomeRoomPanel('create')", script)
+        self.assertIn("'trainingFree').onclick", script)
+        self.assertIn("'trainingStake').value='0'", script)
+        self.assertIn("'training').click()", script)
+
 
 
 if __name__ == "__main__":
