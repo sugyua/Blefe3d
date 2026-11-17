@@ -31,6 +31,7 @@ def joinable(room):
 TEST_START_BALANCE_CENTS = 5000
 AUTH_COOKIE='blefe_session'
 AUTH_RATE={}  # IP + operação, proteção complementar por processo
+AUTH_HASH_SEMAPHORE=asyncio.Semaphore(2)  # limita memória do Argon2
 DONATION_PIX_KEY = os.getenv('DONATION_PIX_KEY','').strip()
 DONATION_PIX_OWNER = os.getenv('DONATION_PIX_OWNER','').strip()
 
@@ -700,8 +701,9 @@ async def api_register(request):
     auth_limit(request,'register',5,3600)
     data=await read_auth_body(request)
     try:
-        account,token=await asyncio.to_thread(accounts.create,
-            data.get('username'),data.get('password'))
+        async with AUTH_HASH_SEMAPHORE:
+            account,token=await asyncio.to_thread(accounts.create,
+                data.get('username'),data.get('password'))
         history=await asyncio.to_thread(accounts.history,account['id'])
     except accounts.DatabaseUnavailable:
         return auth_json({'error':'Banco de contas temporariamente indisponível.'},503)
@@ -721,8 +723,9 @@ async def api_login(request):
     auth_limit(request,'login',12,900)
     data=await read_auth_body(request)
     try:
-        account,token=await asyncio.to_thread(accounts.login,
-            data.get('username'),data.get('password'))
+        async with AUTH_HASH_SEMAPHORE:
+            account,token=await asyncio.to_thread(accounts.login,
+                data.get('username'),data.get('password'))
         history=await asyncio.to_thread(accounts.history,account['id'])
     except accounts.AuthError:
         return auth_json({'error':'Login ou senha incorretos.'},401)
