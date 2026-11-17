@@ -21,7 +21,7 @@ class WelcomeScreenTests(unittest.TestCase):
         self.assertIn("Bem-vindo ao Blefe Color!", intro)
         self.assertIn("Comece com um treino grátis ou encontre uma sala para jogar.", intro)
         self.assertIn("Entradas apenas de teste, sem valor real.", intro)
-        self.assertEqual(re.findall(r"<button\\b[^>]*id=\\\"([^\\\"]+)\\\"", intro),
+        self.assertEqual(re.findall(r'<button\b[^>]*id="([^"]+)"', intro),
                          ["welcomeTraining", "welcomePublic", "welcomeClose"])
         self.assertNotIn("Quando alguém declarar", intro)
         self.assertNotIn("Jogue uma carta da mesma cor", intro)
