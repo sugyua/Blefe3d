@@ -10,18 +10,23 @@ function toast(s){const el=$('toast');el.textContent=s;el.style.display='block';
 function send(type,data={}){if(state.ws?.readyState===1)state.ws.send(JSON.stringify({type,...data}));else toast('Servidor desconectado. Reconectando...')}
 let authMode='login';
 function updateAuthBar(){
-  const logged=!!state.user;
+  const logged=!!state.user&&!state.user.guest;
+  const guest=!!state.user?.guest;
   $('authButton').hidden=logged;
+  $('depositButton').hidden=!logged;
   $('authGreeting').hidden=!logged;
   $('authLogout').hidden=!logged;
   $('authGreeting').textContent=logged?'@'+state.user.username:'';
   $('lobbyIdentity').textContent=logged
-    ?'Você está conectado como @'+state.user.username+'. Seu saldo de teste pertence à sua conta.'
-    :'Para entrar em salas ou treinar, crie uma conta gratuita ou faça login.';
-  document.body.dataset.authenticated=logged?'true':'false';
+    ?'Você está conectado como @'+state.user.username+'. Seu saldo de teste está protegido pela sua conta.'
+    :guest
+      ?'Jogando como visitante. Seu saldo de teste fica neste navegador; para criar uma conta protegida, toque em Entrar / Criar conta.'
+      :'Preparando sua carteira de teste de visitante...';
+  document.body.dataset.authenticated=state.user?'true':'false';
   updateWalletUI();
 }
 function openAuth(mode='login'){
+  if(state.room){toast('Saia da sala antes de trocar de conta.');return}
   authMode=mode;
   $('authModal').hidden=false;
   $('authError').hidden=true;
@@ -36,6 +41,8 @@ function openAuth(mode='login'){
   $('authUsername').focus();
 }
 $('authButton').onclick=()=>openAuth('login');
+$('depositButton').onclick=()=>{if(state.user&&!state.user.guest)$('depositModal').hidden=false};
+$('closeDeposit').onclick=()=>{$('depositModal').hidden=true};
 $('authClose').onclick=()=>{$('authModal').hidden=true};
 $('authSwitch').onclick=()=>openAuth(authMode==='login'?'register':'login');
 $('authLogout').onclick=async()=>{
@@ -65,6 +72,7 @@ $('authForm').onsubmit=async event=>{
     state.user=result.user;
     state.name=result.user.name;
     state.wallet=result.wallet;
+    state.id=null;
     $('authPassword').value='';
     $('authModal').hidden=true;
     updateAuthBar();
@@ -77,30 +85,43 @@ $('authForm').onsubmit=async event=>{
     $('authError').hidden=false;
   }finally{button.disabled=false}
 };
+async function startGuest(){
+  const response=await fetch('/api/guest/start',{
+    method:'POST',credentials:'same-origin',
+    headers:{'Content-Type':'application/json'},body:'{}',cache:'no-store'
+  });
+  if(!response.ok)throw Error('A carteira de visitante está temporariamente indisponível.');
+  const result=await response.json();
+  state.user=result.user;
+  state.name=result.user.name;
+  state.wallet=result.wallet;
+  state.id=null;
+  updateAuthBar();
+  connection();
+  document.dispatchEvent(new CustomEvent('blefe:authenticated'));
+}
 async function bootAuth(){
   try{
     const response=await fetch('/api/auth/me',{credentials:'same-origin',cache:'no-store'});
-    if(!response.ok){
-      const reason=response.status===503
-        ?'O banco de contas está indisponível. Não é seguro iniciar partidas enquanto o saldo não pode ser protegido.'
-        :'Entre ou crie uma conta para jogar.';
-      state.user=null;state.id=null;updateAuthBar();
-      openAuth('login');
-      if(response.status===503){$('authError').textContent=reason;$('authError').hidden=false}
+    if(response.ok){
+      const result=await response.json();
+      state.user=result.user;
+      state.name=result.user.name;
+      state.wallet=result.wallet;
+      updateAuthBar();
+      connection();
+      document.dispatchEvent(new CustomEvent('blefe:authenticated'));
       return;
     }
-    const result=await response.json();
-    state.user=result.user;
-    state.name=result.user.name;
-    state.wallet=result.wallet;
-    updateAuthBar();
-    connection();
-    document.dispatchEvent(new CustomEvent('blefe:authenticated'));
+    if(response.status===401){
+      await startGuest();
+      return;
+    }
+    throw Error('Banco de contas indisponível. Não é seguro iniciar partidas sem salvar o saldo.');
   }catch(e){
     state.user=null;state.id=null;updateAuthBar();
-    openAuth('login');
-    $('authError').textContent='Sem conexão com o servidor de contas.';
-    $('authError').hidden=false;
+    $('connection').textContent='● Indisponível';
+    toast(e.message||'Não foi possível preparar a carteira de teste.');
   }
 }
 function connection(){const proto=location.protocol==='https:'?'wss':'ws';const ws=new WebSocket(proto+'://'+location.host+'/ws');state.ws=ws;$('connection').textContent='● Conectando';
@@ -148,7 +169,7 @@ ws.onclose=e=>{
   setTimeout(()=>{if(state.user)connection()},1600);
 };ws.onerror=()=>{}}
 function startNamed(type,extra){
-  if(!state.user){openAuth('login');toast('Entre na sua conta para jogar.');return}
+  if(!state.user){toast('Aguarde a criação da carteira de visitante.');return}
   if(!state.id||state.ws?.readyState!==WebSocket.OPEN){
     toast('Conectando à sua conta no servidor...');return
   }
