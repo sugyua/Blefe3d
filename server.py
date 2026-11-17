@@ -145,13 +145,114 @@ def info(room):
     'players':[{'id':p['id'],'name':p['name'],'bot':p['bot'],'connected':p.get('ws') is not None and not p['ws'].closed if p.get('ws') else p['bot'],'cards':len(p['hand']),'strikes':0,'out':p['out'],'spectator':p.get('spectator',False),'media':p.get('media',False),
                'cosmetics':dict(p.get('cosmetics') or cosmetics.DEFAULTS)}
                for p in room['players']],
-    'turn':room['turn'],'showcase':bool(room.get('showcase')),
+    'turn':room['turn'],'turn_seconds':TURN_SECONDS,
+    'turn_deadline_ms':room.get('turn_deadline_ms'),
+    'server_time_ms':int(time.time()*1000),
+    'showcase':bool(room.get('showcase')),
     'room_name':room.get('room_name'),'color':room['color'],'top':({'rank':'hidden','color':room['color']} if room.get('hidden_top') else room['top']),'direction':room['direction'],
     'pending':{'player':pending['player'],'claim':pending['claim'],'color':pending['color']} if pending else None,
     'draw_stack':room.get('draw_stack',0),'stack_count':room.get('stack_count',0),
     'last':room['last'],'winner':room.get('winner'),'deck_count':len(room['deck']), 'move':room.get('move'),'round':room.get('round',0),'stake':room.get('stake',0),'pot_cents':room.get('pot_cents',0),'wallet_type':room.get('wallet_type','test'),'proposal':room.get('proposal')}
 
+TURN_SECONDS = 30
+
+
+def _turn_clock_key(room):
+    pending=room.get('pending')
+    # Usar o ID da carta oculta para diferenciar a fase de contestação.
+    # O cronômetro NÃO reinicia em sync, reconexão, atualização da loja
+    # ou nova pessoa entrando no meio de uma rodada.
+    return (room.get('round',0),room.get('turn'),
+            pending['card']['id'] if pending else None)
+
+
+def ensure_turn_clock(room):
+    active=bool(room.get('started') and not room.get('winner')
+                and room.get('turn') and ROOMS.get(room['code']) is room)
+    task=room.get('_turn_clock_task')
+    if not active:
+        if task and not task.done() and task is not asyncio.current_task():
+            task.cancel()
+        room['_turn_clock_task']=None
+        room['_turn_clock_key']=None
+        room['turn_deadline_ms']=None
+        room['_turn_deadline_mono']=None
+        return
+    key=_turn_clock_key(room)
+    if key!=room.get('_turn_clock_key'):
+        if task and not task.done() and task is not asyncio.current_task():
+            task.cancel()
+        task=None
+        room['_turn_clock_key']=key
+        room['_turn_deadline_mono']=time.monotonic()+TURN_SECONDS
+        room['turn_deadline_ms']=int(time.time()*1000)+TURN_SECONDS*1000
+    if task is None or task.done():
+        try:
+            loop=asyncio.get_running_loop()
+        except RuntimeError:
+            # Testes puramente síncronos não executam um servidor WebSocket.
+            return
+        remaining=max(0,room['_turn_deadline_mono']-time.monotonic())
+        room['_turn_clock_task']=loop.create_task(_turn_clock_worker(room,key,remaining))
+
+
+async def _turn_clock_worker(room,key,delay):
+    try:
+        await asyncio.sleep(delay)
+        if (ROOMS.get(room['code']) is room and
+                room.get('_turn_clock_key')==key and
+                room.get('started') and not room.get('winner')):
+            timeout_turn(room)
+    except asyncio.CancelledError:
+        pass
+
+
+def timeout_turn(room):
+    """Esgotou o tempo: exatamente 1 carta, passa a vez e resolve ação pendente.
+
+    O efeito de compra acumulada não é aplicado por cima da penalidade:
+    ultrapassar 30 s custa somente 1 carta fictícia. A ação pendente
+    é aceita por falta de contestação e a pilha é encerrada.
+    """
+    if (ROOMS.get(room['code']) is not room or not room.get('started')
+            or room.get('winner') or not room.get('turn')):
+        return False
+    player=player_by_id(room,room['turn'])
+    if not player or player.get('spectator') or player.get('out'):
+        return False
+    pending=room.get('pending')
+    actor=player_by_id(room,pending['player']) if pending else None
+    if pending:
+        room['discard'].append(pending['card'])
+        room['top']=pending['card']
+        room['color']=pending['color']
+        room['hidden_top']=True
+        room['pending']=None
+        reset_stack(room)
+        if pending['claim']=='reverse':
+            room['direction']*=-1
+    draw(room,player,1)
+    nxt=advance(room,player['id'])
+    room['turn']=nxt['id']
+    room['last']=None
+    notice(room,player['name']+' esgotou os 30 segundos: comprou 1 carta e perdeu a vez.')
+    if actor and actor is not player:
+        finalize(room,actor)
+    sync(room)
+    bots_schedule(room)
+    return True
+
+
+def enforce_turn_clock(room):
+    deadline=room.get('_turn_deadline_mono')
+    if (deadline is not None and time.monotonic()>=deadline
+            and room.get('started') and not room.get('winner')):
+        return timeout_turn(room)
+    return False
+
+
 def sync(room):
+    ensure_turn_clock(room)
     payload=info(room)
     for p in room['players']:
         emit(p.get('ws'),'state',state=payload,hand=p['hand'])
@@ -309,6 +410,8 @@ def pending_truth(room,q):
 def play(room,p,ids,claim=None,newcolor=None):
     if p.get('spectator',False) or room['winner'] or room['turn']!=p['id']:
         return 'Não é sua vez.'
+    if enforce_turn_clock(room):
+        return 'Os 30 segundos acabaram. Você comprou 1 carta e perdeu a vez.'
     previous=room['pending']
     if previous and previous['claim'] not in ('draw2','draw4'):
         return 'Você precisa aceitar ou duvidar dessa carta de ação.'
@@ -375,6 +478,8 @@ def resolve(room,p,doubt):
     q=room['pending']
     if not q or p.get('spectator',False) or room['turn']!=p['id'] or room['winner']:
         return 'Não há carta oculta pendente para você.'
+    if enforce_turn_clock(room):
+        return 'Os 30 segundos acabaram. Você comprou 1 carta e perdeu a vez.'
     actor=player_by_id(room,q['player'])
     actual=q['card'];claim=q['claim']
     truthful=pending_truth(room,q)
@@ -432,6 +537,8 @@ def resolve(room,p,doubt):
 def draw_turn(room,p):
     if p.get('spectator',False) or room['winner'] or room['turn']!=p['id'] or room['pending']:
         return 'Você não pode comprar agora.'
+    if enforce_turn_clock(room):
+        return 'Os 30 segundos acabaram. Você comprou 1 carta e perdeu a vez.'
     draw(room,p,1)
     room['turn']=advance(room,p['id'])['id']
     notice(room,p['name']+' comprou uma carta e passou.')
