@@ -4,15 +4,111 @@ const COR={red:'VERMELHO',yellow:'AMARELO',green:'VERDE',blue:'AZUL',wild:'CORIN
 const ACAO={skip:'BLOQUEIO',draw2:'+2',reverse:'INVERTER',draw4:'+4',wild:'CORINGA',hidden:'CARTA OCULTA'};
 const dinheiroTeste=centavos=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(centavos||0)/100);
 const nomeCarta=c=>!c?'carta':(ACAO[c.rank]||c.rank)+(c.color&&c.color!=='wild'?' '+(COR[c.color]||''):'');
-const state={id:null,room:null,hand:[],selected:new Set(),ws:null,token:localStorage.getItem('blefe_token'),name:localStorage.getItem('blefe_name')||'',stream:null,pcs:new Map(),remoteStreams:new Map(),micEnabled:true,camEnabled:false,voiceReady:false,volumes:new Map(),selectedColor:'red',claim:null,previewStream:null,lastAnimatedMove:null,mediaConnecting:false,revealTimers:[],victoryShown:null,victoryTimer:null,wallet:{balance_cents:5000,test:{balance_cents:5000},real:{balance_cents:0,enabled:false},history:[],ad_free:false},publicConfig:null,roomPreview:null,voiceContext:null,voiceMeters:new Map(),voiceTimer:null};
-$('nickname').value=state.name;
+const state={id:null,room:null,hand:[],selected:new Set(),ws:null,token:null,name:'',user:null,stream:null,pcs:new Map(),remoteStreams:new Map(),micEnabled:true,camEnabled:false,voiceReady:false,volumes:new Map(),selectedColor:'red',claim:null,previewStream:null,lastAnimatedMove:null,mediaConnecting:false,revealTimers:[],victoryShown:null,victoryTimer:null,wallet:{balance_cents:5000,test:{balance_cents:5000},real:{balance_cents:0,enabled:false},history:[],ad_free:false},publicConfig:null,roomPreview:null,voiceContext:null,voiceMeters:new Map(),voiceTimer:null};
+try{localStorage.removeItem('blefe_token')}catch(e){}
 function toast(s){const el=$('toast');el.textContent=s;el.style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.style.display='none',3500)}
 function send(type,data={}){if(state.ws?.readyState===1)state.ws.send(JSON.stringify({type,...data}));else toast('Servidor desconectado. Reconectando...')}
+let authMode='login';
+function updateAuthBar(){
+  const logged=!!state.user;
+  $('authButton').hidden=logged;
+  $('authGreeting').hidden=!logged;
+  $('authLogout').hidden=!logged;
+  $('authGreeting').textContent=logged?'@'+state.user.username:'';
+  $('lobbyIdentity').textContent=logged
+    ?'Você está conectado como @'+state.user.username+'. Seu saldo de teste pertence à sua conta.'
+    :'Para entrar em salas ou treinar, crie uma conta gratuita ou faça login.';
+  document.body.dataset.authenticated=logged?'true':'false';
+  updateWalletUI();
+}
+function openAuth(mode='login'){
+  authMode=mode;
+  $('authModal').hidden=false;
+  $('authError').hidden=true;
+  $('authTitle').textContent=mode==='register'?'Criar conta gratuita':'Entrar na conta';
+  $('authIntro').textContent=mode==='register'
+    ?'Seu usuário será único. Você receberá R$ 50 fictícios uma única vez.'
+    :'Entre com seu usuário e senha para recuperar o saldo fictício.';
+  $('authSubmit').textContent=mode==='register'?'Criar minha conta':'Entrar';
+  $('authSwitch').textContent=mode==='register'?'Já tenho conta · Fazer login':'Ainda não tenho conta · Criar conta';
+  $('authPassword').value='';
+  $('authPassword').autocomplete=mode==='register'?'new-password':'current-password';
+  $('authUsername').focus();
+}
+$('authButton').onclick=()=>openAuth('login');
+$('authClose').onclick=()=>{$('authModal').hidden=true};
+$('authSwitch').onclick=()=>openAuth(authMode==='login'?'register':'login');
+$('authLogout').onclick=async()=>{
+  if(state.room&&!confirm('Sair da sua conta encerrará sua conexão com a partida. Continuar?'))return;
+  try{
+    const result=await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:'{}'});
+    if(!result.ok){toast('Não foi possível encerrar a sessão.');return}
+    location.reload();
+  }catch(e){toast('Não foi possível desconectar.')}
+};
+$('authForm').onsubmit=async event=>{
+  event.preventDefault();
+  const username=$('authUsername').value.trim();
+  const password=$('authPassword').value;
+  const button=$('authSubmit');
+  button.disabled=true;
+  $('authError').hidden=true;
+  try{
+    const response=await fetch('/api/auth/'+(authMode==='register'?'register':'login'),{
+      method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username,password})
+    });
+    let result;
+    try{result=await response.json()}catch(e){result={error:'Servidor de contas indisponível.'}}
+    if(!response.ok)throw Error(result.error||'Não foi possível acessar a conta.');
+    state.user=result.user;
+    state.name=result.user.name;
+    state.wallet=result.wallet;
+    $('authPassword').value='';
+    $('authModal').hidden=true;
+    updateAuthBar();
+    if(state.ws&&state.ws.readyState===WebSocket.OPEN){state.ws.close()}
+    connection();
+    document.dispatchEvent(new CustomEvent('blefe:authenticated'));
+    toast('Conta conectada com sucesso!');
+  }catch(e){
+    $('authError').textContent=e.message;
+    $('authError').hidden=false;
+  }finally{button.disabled=false}
+};
+async function bootAuth(){
+  try{
+    const response=await fetch('/api/auth/me',{credentials:'same-origin',cache:'no-store'});
+    if(!response.ok){
+      const reason=response.status===503
+        ?'O banco de contas está indisponível. Não é seguro iniciar partidas enquanto o saldo não pode ser protegido.'
+        :'Entre ou crie uma conta para jogar.';
+      state.user=null;state.id=null;updateAuthBar();
+      openAuth('login');
+      if(response.status===503){$('authError').textContent=reason;$('authError').hidden=false}
+      return;
+    }
+    const result=await response.json();
+    state.user=result.user;
+    state.name=result.user.name;
+    state.wallet=result.wallet;
+    updateAuthBar();
+    connection();
+    document.dispatchEvent(new CustomEvent('blefe:authenticated'));
+  }catch(e){
+    state.user=null;state.id=null;updateAuthBar();
+    openAuth('login');
+    $('authError').textContent='Sem conexão com o servidor de contas.';
+    $('authError').hidden=false;
+  }
+}
 function connection(){const proto=location.protocol==='https:'?'wss':'ws';const ws=new WebSocket(proto+'://'+location.host+'/ws');state.ws=ws;$('connection').textContent='● Conectando';
-ws.onopen=()=>{$('connection').textContent='● Conectado';send('hello',{name:state.name||'Jogador',token:state.token})};
+ws.onopen=()=>{$('connection').textContent='● Conectado';send('hello',{})};
 ws.onmessage=async e=>{let m;try{m=JSON.parse(e.data)}catch{return}
 if(m.type==='welcome'){
-  state.id=m.id;state.token=m.id;localStorage.setItem('blefe_token',m.id);
+  state.id=m.id;
+  if(m.user){state.user=m.user;state.name=m.user.name;updateAuthBar()}
   if(m.wallet){state.wallet=m.wallet;updateWalletUI()}
   if(m.room){
     $('lobby').hidden=true;$('game').hidden=false;
@@ -42,8 +138,22 @@ else if(m.type==='left'){
 }
 else if(m.type==='media_peer'){if(m.id!==state.id){if(m.ready&&state.voiceReady&&state.id<m.id){const peer=state.room?.players.find(p=>p.id===m.id);if(peer?.media)await connectPeer(m.id)}else if(!m.ready)removePeer(m.id)}}
 else if(m.type==='signal')await onSignal(m.sender,m.signal)};
-ws.onclose=()=>{if(state.ws!==ws)return;$('connection').textContent='● Desconectado';for(const id of [...state.pcs.keys()])removePeer(id,false);renderPeers();setTimeout(connection,1600)};ws.onerror=()=>{}}
-function startNamed(type,extra){const name=$('nickname').value.trim()||'Jogador';state.name=name;localStorage.setItem('blefe_name',name);if(!state.id){toast('Conectando ao servidor...');return}send(type,{...extra,name,wallet_type:'test'})}
+ws.onclose=e=>{
+  if(state.ws!==ws)return;
+  $('connection').textContent='● Desconectado';
+  for(const id of [...state.pcs.keys()])removePeer(id,false);
+  renderPeers();
+  if(!state.user)return;
+  if(e.code===1008||e.code===4401){state.user=null;updateAuthBar();bootAuth();return}
+  setTimeout(()=>{if(state.user)connection()},1600);
+};ws.onerror=()=>{}}
+function startNamed(type,extra){
+  if(!state.user){openAuth('login');toast('Entre na sua conta para jogar.');return}
+  if(!state.id||state.ws?.readyState!==WebSocket.OPEN){
+    toast('Conectando à sua conta no servidor...');return
+  }
+  send(type,{...extra,wallet_type:'test'});
+}
 $('training').onclick=()=>{
   const amount=Number($('trainingStake').value);
   const balance=state.wallet?.test?.balance_cents??state.wallet?.balance_cents??0;
@@ -140,7 +250,7 @@ $('victorySpectate').onclick=()=>{send('spectate');$('victory').hidden=true;toas
 $('victoryAccept').onclick=()=>send('rematch_accept');
 $('victoryRematch').onclick=()=>send('rematch_propose',{amount:Number($('rematchAmount').value),wallet_type:'test'});
 $('rematchAmount').oninput=()=>{$('rematchAmountLabel').textContent=dinheiroTeste($('rematchAmount').value)+' de teste'};
-$('openWallet').onclick=()=>{updateWalletUI();$('walletModal').hidden=false};
+$('openWallet').onclick=()=>{if(!state.user){openAuth('login');return}updateWalletUI();$('walletModal').hidden=false};
 $('gameWallet').onclick=()=>{updateWalletUI();$('walletModal').hidden=false};
 $('closeWallet').onclick=()=>{$('walletModal').hidden=true};
 $('openDonation').onclick=()=>{$('donationModal').hidden=false;loadPublicConfig()};
@@ -154,8 +264,8 @@ $('copyDonationPix').onclick=async()=>{
 function updateWalletUI(){
   const w=state.wallet||{test:{balance_cents:5000},real:{balance_cents:0},history:[]};
   const saldoTeste=w.test?.balance_cents??w.balance_cents??5000;
-  for(const id of ['lobbyBalance','walletBigBalance','gameWallet'])
-    $(id).textContent=dinheiroTeste(saldoTeste);
+  for(const id of ['walletBigBalance','gameWallet','topBalance'])
+    $(id).textContent=state.user?dinheiroTeste(saldoTeste):'—';
   $('walletRealBalance').textContent=dinheiroTeste(w.real?.balance_cents||0);
   const el=$('walletTransactions');el.replaceChildren();
   (w.history||[]).slice().reverse().slice(0,8).forEach(entry=>{
@@ -765,4 +875,6 @@ document.addEventListener('visibilitychange',()=>{
     if(video.srcObject&&video.paused)video.play().catch(()=>{});
   }
 });
-const invitation=new URLSearchParams(location.search).get('sala');if(invitation){$('roomcode').value=invitation.toUpperCase();previewRoom(invitation)}connection();
+const invitation=new URLSearchParams(location.search).get('sala');
+if(invitation){$('roomcode').value=invitation.toUpperCase();previewRoom(invitation)}
+bootAuth();
