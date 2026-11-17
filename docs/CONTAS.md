@@ -34,7 +34,7 @@ Banco gratuito de testes criado para este projeto:
 7. No iPhone e Android, teste criar conta, sair, entrar novamente, recuperar o mesmo saldo e tentar abrir uma partida sem login (acesso deve ser negado).
 8. Teste uma partida de entrada fictícia, registre o valor, faça logout e login e confira se o histórico e saldo são preservados.
 
-O servidor retorna 503 em cadastros/logins sem banco e **não permite jogar anonimamente**, evitando creditar saldo temporário sem proteção.
+O servidor **recusa iniciar uma nova publicação** sem \`DATABASE_URL\` e não permite jogar anonimamente. Isso evita entregar uma versão em que o cadastro parece funcionar mas o saldo não pode ser protegido.
 
 ## Limitações e pendências antes de abrir o beta
 
