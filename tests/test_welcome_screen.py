@@ -35,7 +35,7 @@ class WelcomeScreenTests(unittest.TestCase):
         self.assertIn("BLOQUEIO", tutorial.upper())
         self.assertIn("+2", tutorial)
         self.assertIn("+4", tutorial)
-        self.assertIn("id=\"showGuideFromLobby\">Como jogar?", self.html)
+        self.assertIn('id="showGuideFromLobby" type="button">Como jogar?', self.html)
         self.assertIn("()=>show($('guide'))", self.pwa)
 
     def test_welcome_buttons_keep_their_original_actions(self):
