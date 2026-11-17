@@ -18,6 +18,10 @@ class RoomWebSocketTests(unittest.IsolatedAsyncioTestCase):
         await self.client.start_server()
         self.sockets = []
         self.identities = {}
+        self.guest_identities = {}
+        self.guest_session_patch = patch.object(game.accounts,'from_guest_session',
+            side_effect=lambda token: self.guest_identities.get(token))
+        self.guest_session_patch.start()
         self.auth_session_patch = patch.object(game.accounts,'from_session',
             side_effect=lambda token: self.identities.get(token))
         self.auth_history_patch = patch.object(game.accounts,'history',
@@ -34,6 +38,7 @@ class RoomWebSocketTests(unittest.IsolatedAsyncioTestCase):
             await ws.close()
         await self.client.close()
         self.auth_session_patch.stop()
+        self.guest_session_patch.stop()
         self.auth_history_patch.stop()
         self.auth_events_patch.stop()
         game.ROOMS.clear()
@@ -71,6 +76,36 @@ class RoomWebSocketTests(unittest.IsolatedAsyncioTestCase):
                 message = await ws.receive_json()
                 if message['type'] == kind:
                     return message
+
+    async def test_guest_uses_test_wallet_without_account_and_not_spoofed_by_hello(self):
+        token='guest-test-session'
+        guest_id='real-guest-database-id'
+        self.guest_identities[token]={
+            'id':guest_id,'username':'visitante_abcdef',
+            'name':'Visitante A12','guest':True,
+            'test_balance_cents':5000,'ad_free':False
+        }
+        origin=str(self.client.make_url('/').origin())
+        ws=await self.client.ws_connect('/ws',headers={
+            'Origin':origin,'Cookie':f'blefe_guest_session={token}'
+        })
+        self.sockets.append(ws)
+        # Any ID or password in the WebSocket payload must be ignored.
+        await ws.send_json({'type':'hello','token':'spoofed-account','name':'Sugya'})
+        welcome=await self.receive_type(ws,'welcome')
+        self.assertEqual(welcome['id'],guest_id)
+        self.assertTrue(welcome['user']['guest'])
+        self.assertEqual(welcome['wallet']['test']['balance_cents'],5000)
+        self.assertFalse(game.USERS[guest_id]['authenticated'])
+        self.assertTrue(game.USERS[guest_id]['wallet_persistent'])
+        await ws.send_json({'type':'create','mode':'training','stake':500})
+        response=await self.receive_type(ws,'state')
+        code=response['state']['code']
+        self.assertEqual(game.USERS[guest_id]['test_balance_cents'],4500)
+        await ws.send_json({'type':'leave'})
+        result=await self.receive_type(ws,'left')
+        self.assertTrue(result['training_closed'])
+        self.assertNotIn(code,game.ROOMS)
 
     async def test_current_player_leaves_and_turn_passes_to_next_player(self):
         host, host_id = await self.connect('Anfitrião')
