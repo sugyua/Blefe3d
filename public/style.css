@@ -359,3 +359,11 @@
   .accountControls{gap:5px}
   .accountBar .depositButton{padding:7px 8px}
 }
+
+/* Boas-vindas simples: regras detalhadas ficam em Como jogar?. */
+#welcomeGuide .welcomeSimple{width:min(92vw,400px)!important;padding:24px;box-shadow:0 22px 65px #000b}
+#welcomeGuide .welcomeSimple h2{margin:8px 0 12px}
+#welcomeGuide .welcomeSimple>p:not(.introWarning){margin:0 0 14px;line-height:1.45;color:#d7e3ef}
+#welcomeGuide .welcomeSimple .introWarning{margin:0 0 15px;padding:10px 12px}
+#welcomeGuide .welcomeSimple button{min-height:43px;margin-top:7px}
+@media(max-width:380px){#welcomeGuide .welcomeSimple{padding:19px}}
