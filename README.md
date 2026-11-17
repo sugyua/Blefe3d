@@ -36,3 +36,9 @@ O servidor usa **aiohttp** e WebSocket. Atualmente armazena várias informaçõe
 - [Página de apresentação HTML5 para itch.io](marketing/itch_launcher/index.html)
 
 **Os materiais de divulgação estão preparados, mas não foram publicados automaticamente em contas externas.**
+
+## Contas de jogador (versão em preparação)
+
+A nova interface inclui uma barra superior com o saldo de **teste** e botões de **Entrar / Criar conta / Sair**. A autenticação usa usuário e senha, sessão em cookie protegido e PostgreSQL; as senhas não são armazenadas em texto puro.
+
+**Antes de liberar esta alteração**, é necessário conectar o banco gratuito do Render por meio da variável secreta `DATABASE_URL`. Veja o [guia de contas e configuração](docs/CONTAS.md). O banco gratuito atual expira em **17/12/2026**, e é preciso planejar a migração antes dessa data. Os saldos são fictícios, sem depósito ou saque.
