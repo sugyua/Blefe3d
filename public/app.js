@@ -4,9 +4,28 @@ const COR={red:'VERMELHO',yellow:'AMARELO',green:'VERDE',blue:'AZUL',wild:'CORIN
 const ACAO={skip:'BLOQUEIO',draw2:'+2',reverse:'INVERTER',draw4:'+4',wild:'CORINGA',hidden:'CARTA OCULTA'};
 const dinheiroTeste=centavos=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(centavos||0)/100);
 const nomeCarta=c=>!c?'carta':(ACAO[c.rank]||c.rank)+(c.color&&c.color!=='wild'?' '+(COR[c.color]||''):'');
-const state={id:null,room:null,hand:[],selected:new Set(),ws:null,token:null,name:'',user:null,stream:null,pcs:new Map(),remoteStreams:new Map(),micEnabled:true,camEnabled:false,voiceReady:false,volumes:new Map(),selectedColor:'red',claim:null,previewStream:null,lastAnimatedMove:null,mediaConnecting:false,revealTimers:[],victoryShown:null,victoryTimer:null,wallet:{balance_cents:5000,test:{balance_cents:5000},real:{balance_cents:0,enabled:false},history:[],ad_free:false},publicConfig:null,roomPreview:null,voiceContext:null,voiceMeters:new Map(),voiceTimer:null};
+const state={id:null,room:null,hand:[],selected:new Set(),ws:null,token:null,name:'',user:null,stream:null,pcs:new Map(),remoteStreams:new Map(),micEnabled:true,camEnabled:false,voiceReady:false,volumes:new Map(),selectedColor:'red',claim:null,previewStream:null,lastAnimatedMove:null,mediaConnecting:false,revealTimers:[],victoryShown:null,victoryTimer:null,wallet:{balance_cents:5000,test:{balance_cents:5000},real:{balance_cents:0,enabled:false},history:[],ad_free:false},publicConfig:null,roomPreview:null,voiceContext:null,voiceMeters:new Map(),voiceTimer:null,turnDeadlineLocal:null};
 try{localStorage.removeItem('blefe_token')}catch(e){}
 function toast(s){const el=$('toast');el.textContent=s;el.style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.style.display='none',3500)}
+function updateTurnTimer(){
+  const timer=$('turnTimer');
+  const deadline=state.turnDeadlineLocal;
+  if(!state.room?.started||state.room?.winner||!deadline){
+    timer.hidden=true;timer.classList.remove('urgent');return;
+  }
+  timer.hidden=false;
+  const seconds=Math.max(0,Math.min(30,Math.ceil((deadline-performance.now())/1000)));
+  timer.textContent=seconds+'s';
+  timer.classList.toggle('urgent',seconds<=10);
+  timer.setAttribute('aria-label',seconds+' segundos restantes para o jogador da vez');
+}
+function setTurnDeadline(room){
+  const remaining=Number(room?.turn_deadline_ms)-Number(room?.server_time_ms);
+  state.turnDeadlineLocal=(Number.isFinite(remaining)&&remaining>0&&room?.turn)
+    ?performance.now()+Math.min(30000,remaining):null;
+  updateTurnTimer();
+}
+setInterval(updateTurnTimer,250);
 function send(type,data={}){if(state.ws?.readyState===1)state.ws.send(JSON.stringify({type,...data}));else toast('Servidor desconectado. Reconectando...')}
 let authMode='login';
 function updateAuthBar(){
@@ -143,7 +162,7 @@ if(m.type==='welcome'){
     if(wasTraining)toast('A conexão caiu. O treino contra bots foi encerrado e a entrada fictícia não foi reembolsada.');
   }
 }
-else if(m.type==='state'){state.room=m.state;state.hand=m.hand||[];state.selected=new Set([...state.selected].filter(x=>state.hand.some(c=>c.id===x)));render();if(m.state.move&&m.state.move.id!==state.lastAnimatedMove){state.lastAnimatedMove=m.state.move.id;animateMove(m.state.move)}}
+else if(m.type==='state'){state.room=m.state;state.hand=m.hand||[];state.selected=new Set([...state.selected].filter(x=>state.hand.some(c=>c.id===x)));setTurnDeadline(m.state);render();if(m.state.move&&m.state.move.id!==state.lastAnimatedMove){state.lastAnimatedMove=m.state.move.id;animateMove(m.state.move)}}
 else if(m.type==='wallet'){state.wallet=m.wallet;updateWalletUI();if(state.room?.winner&&!$('victory').hidden)populateVictory(state.room)}
 else if(m.type==='notice'){$('logline').textContent=m.message}
 else if(m.type==='error')toast(m.message)
@@ -222,11 +241,15 @@ async function previewRoom(code){
     const title=document.createElement('strong');
     title.textContent='Sala '+data.code+' — '+data.host_name;
     const details=document.createElement('p');
-    details.textContent='Entrada por participante: '+dinheiroTeste(data.stake_cents)+' de saldo fictício. Nenhum dinheiro real será cobrado.';
+    details.textContent=data.showcase
+      ?data.players+' participantes ('+data.bots+' bots identificados). Partida em andamento: você assume as cartas de um bot. Entrada: '+dinheiroTeste(data.stake_cents)+' fictícios. Se desistir, a entrada não é devolvida.'
+      :'Entrada por participante: '+dinheiroTeste(data.stake_cents)+' de saldo fictício. Nenhum dinheiro real será cobrado.';
     const consent=document.createElement('button');
     consent.className='primary';
     const balance=state.wallet?.test?.balance_cents??state.wallet?.balance_cents??0;
-    consent.textContent=data.joinable?'Aceitar entrada e participar':'Partida já iniciada / sala indisponível';
+    consent.textContent=data.joinable
+      ?data.showcase?'Aceitar entrada fictícia e substituir bot':'Aceitar entrada e participar'
+      :'Partida já iniciada / sala indisponível';
     consent.disabled=!data.joinable||data.stake_cents>balance;
     if(data.stake_cents>balance)details.textContent+=' Saldo de teste insuficiente.';
     consent.onclick=()=>startNamed('join',{code:data.code,accept_stake_cents:data.stake_cents});
@@ -258,9 +281,11 @@ async function refreshPublicRooms(){
       const item=document.createElement('div');item.className='publicRoomItem';
       const header=document.createElement('strong');header.textContent='Sala '+room.code+' · '+room.host;
       const sub=document.createElement('p');
-      sub.textContent=room.players+'/4 jogadores • Entrada '+dinheiroTeste(room.stake_cents)+' fictícios';
+      sub.textContent=room.players+'/4 participantes • '+(room.bots?room.bots+' bots • ':'')+
+        (room.showcase?'Em andamento • Assumir bot • ':'')+
+        'Entrada '+dinheiroTeste(room.stake_cents)+' fictícios';
       const action=document.createElement('button');action.className='primary';
-      action.textContent='Ver entrada e participar';
+      action.textContent=room.showcase?'Assumir lugar de bot':'Ver entrada e participar';
       action.onclick=()=>{
         closePublicRooms();$('roomcode').value=room.code;
         showHomeRoomPanel('join',true);
@@ -280,7 +305,9 @@ $('startBtn').onclick=()=>send('start');$('leaveBtn').onclick=()=>{
   const trainingActive=room?.mode==='training'&&room.started&&!room.winner;
   const message=trainingActive
     ?'Abandonar o treino encerrará a sala imediatamente. A entrada de '+dinheiroTeste(room.stake)+' em saldo fictício já descontada NÃO será devolvida. Deseja sair?'
-    :'Deseja sair da sala?';
+    :room?.showcase&&room.started&&!room.winner
+      ?'Um bot assumirá suas cartas. A entrada fictícia de '+dinheiroTeste(room.stake)+' já descontada NÃO será devolvida. Sair da partida?'
+      :'Deseja sair da sala?';
   if(confirm(message))send('leave');
 };
 $('victoryClose').onclick=()=>{$('victory').hidden=true};
@@ -421,7 +448,7 @@ for(const el of document.querySelectorAll('[data-claim]')){
 }
 function makeCard(c){const el=document.createElement('div');el.className='card uno '+(c.color||'wild');const b=document.createElement('b');b.textContent=({skip:'⊘',draw2:'+2',draw4:'+4',reverse:'⇄',wild:'★'})[c.rank]||c.rank;el.append(b);return el}
 function render(){const s=state.room;if(!s)return;
-$('lobby').hidden=true;$('game').hidden=false;$('roomLabel').textContent=s.mode==='training'?'TREINAMENTO':'SALA '+s.code;$('waiting').hidden=s.started;
+$('lobby').hidden=true;$('game').hidden=false;$('roomLabel').textContent=s.mode==='training'?'TREINAMENTO':(s.room_name||'SALA')+' '+s.code;$('waiting').hidden=s.started;
 const me=s.players.find(p=>p.id===state.id),actor=s.players.find(p=>p.id===s.turn),myturn=!!s.started&&!s.winner&&s.turn===state.id,winner=s.players.find(p=>p.id===s.winner);
 $('turnBanner').textContent=winner?'🏆 '+winner.name+' VENCEU!':!s.started?'AGUARDANDO JOGADORES':me?.spectator?'👁 ASSISTINDO À PARTIDA':myturn?'🟡 SUA VEZ DE JOGAR':'⏳ VEZ DE '+(actor?.name?.toUpperCase()||'...');
 $('turnBanner').classList.toggle('myturn',myturn);
