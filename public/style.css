@@ -296,3 +296,52 @@
 /* Aviso de moderação no rodapé do lobby: discreto, legível e acessível. */
 .moderationFooter{margin-top:14px;padding-top:10px;border-top:1px solid #33445c;text-align:center}
 .welcome .moderationFooter p{margin:0;font-size:11px;line-height:1.5;color:#a6b5c7;font-weight:400}
+
+
+/* Barra superior fixa e formulário de conta (a carteira real permanece indisponível). */
+:root{--account-bar-height:calc(54px + env(safe-area-inset-top))}
+.accountBar{
+  position:fixed;z-index:24;top:0;left:0;right:0;
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  height:var(--account-bar-height);
+  padding:env(safe-area-inset-top) max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left));
+  background:linear-gradient(110deg,#101d32,#172a3b);
+  border-bottom:1px solid #42627a;box-shadow:0 4px 15px #0007;
+}
+.accountLogo{font-weight:1000;font-size:clamp(13px,3.9vw,18px);letter-spacing:.5px;color:#9ee9bd;white-space:nowrap}
+.accountLogo span{color:#f2eee9}
+.accountControls{display:flex;align-items:center;gap:7px;min-width:0}
+.accountBalance{display:flex;flex-direction:column;align-items:flex-end;gap:2px;white-space:nowrap}
+.accountBalance span{font-weight:800;color:#a3b6ce;font-size:9px;letter-spacing:.55px}
+.accountBalance strong{font-size:clamp(14px,4vw,20px);color:#b7ffd6;font-weight:950;font-variant-numeric:tabular-nums}
+.accountBar button{min-height:35px;padding:7px 10px;border-radius:9px;font-size:12px;white-space:nowrap}
+.accountBar .accountLogin{background:#187d5d;color:white;border-color:#51c594}
+.accountBar .accountLogout{background:#2b3b51;color:#f3f7ff}
+.accountGreeting{font-size:11px;color:#c9dce8;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#lobby.overlay{padding-top:calc(var(--account-bar-height) + 13px);place-items:start center;overflow-y:auto}
+#lobby .welcome{margin:auto;width:min(100%,410px);padding:21px;max-height:none}
+#lobby .lobbyIdentity{font-size:11px;color:#a5e8c8;line-height:1.45;margin:9px 0 12px}
+#game{padding-top:var(--account-bar-height)}
+#game .headActions .gameWallet{display:none}
+.authDialog{width:min(95vw,420px)!important;max-height:87dvh;overflow-y:auto;text-align:left}
+.authEyebrow{color:#8ce2bd;letter-spacing:1.25px;font-size:11px;font-weight:900}
+.authDialog h2{font-size:clamp(24px,7vw,30px);color:#f9df9d;margin:8px 0 9px}
+.authDialog p{color:#c6d4e4;font-size:12px;line-height:1.55;margin:5px 0 15px}
+.authDialog form{display:flex;flex-direction:column;gap:7px}
+.authDialog form label{display:block;color:#e6f1fb;font-size:12px;font-weight:850;margin-top:3px}
+.authDialog form input{font-size:15px;padding:12px;border:1px solid #687a8e;border-radius:9px;background:#101c2e;color:white}
+.authDialog form button{margin-top:10px}
+.authDialog .authError{background:#4a2733;border:1px solid #e68f9b;color:#ffe0e5;border-radius:9px;font-size:12px;padding:8px 11px;margin:8px 0 0}
+.authDialog .authSwitch,.authDialog .authClose{width:100%;display:block;margin-top:9px;min-height:42px;font-size:13px}
+.authDialog .authSwitch{background:#254b60;border-color:#437f96;color:#daefff}
+.authDialog .authClose{background:#243246}
+.authDialog .authNotice{font-size:11px;color:#a7bad2;margin:14px 0 2px}
+@media(max-width:385px){
+  .accountBar{gap:6px;padding-left:6px;padding-right:6px}
+  .accountLogo{font-size:12px}
+  .accountBalance span{font-size:8px}
+  .accountBalance strong{font-size:14px}
+  .accountBar button{font-size:10px;padding:6px}
+  .accountGreeting{max-width:66px;font-size:10px}
+  #lobby .welcome{padding:15px}
+}
