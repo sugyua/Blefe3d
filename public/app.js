@@ -444,6 +444,9 @@ function renderPeers(){
       }else parent.append(box);
     }
     box.classList.toggle('current',!!p&&s.turn===p.id);
+    const frame=p?.cosmetics?.frame||'frame_slate';
+    box.dataset.frame=['frame_slate','frame_mint','frame_violet','frame_royal'].includes(frame)
+      ?frame:'frame_slate';
     let countBadge=box.querySelector('.cardsCountBadge');
     if(!countBadge){
       countBadge=document.createElement('div');countBadge.className='cardsCountBadge';
