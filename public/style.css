@@ -419,3 +419,14 @@
   #lobby .homeCompact .brand{font-size:31px}
   #lobby .homeCompact .homeTagline{margin-bottom:16px}
 }
+
+/* Declaração dupla: ação + cor; acessível em telas pequenas. */
+.claimDialog{width:min(94vw,430px);max-height:90dvh;overflow-y:auto;text-align:left;padding:20px}
+.claimDialog h2{margin:2px 0 8px;color:#ffdea1;font-size:clamp(21px,6vw,27px)}
+.claimDialog p{font-size:13px;line-height:1.5;color:#dce8f3;margin:6px 0 12px}
+.claimDialog .claimStep{font-size:13px;font-weight:900;color:#b9edda;letter-spacing:.3px;margin:13px 0 8px}
+.claimDialog .claimGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.claimDialog .claimGrid button{min-height:46px;font-size:13px;padding:10px 4px}
+.claimDialog .claimGrid [data-color]{background:#263f51;border-color:#5a7e8b}
+.claimDialog small{display:block;color:#b0c0cf;font-size:10px;line-height:1.55;margin:13px 0}
+.claimDialog #cancelClaim{width:100%;background:#2c394e;min-height:40px}
