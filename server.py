@@ -4,6 +4,9 @@ from collections import deque
 from pathlib import Path
 from aiohttp import web, WSMsgType
 from pwa_icons import icon_png
+from urllib.parse import urlparse
+import psycopg
+import accounts
 
 ROOT = Path(__file__).parent / 'public'
 ROOMS = {}
@@ -26,6 +29,8 @@ def joinable(room):
             and active_ws(player_by_id(room,room['host'])))
 
 TEST_START_BALANCE_CENTS = 5000
+AUTH_COOKIE='blefe_session'
+AUTH_RATE={}  # IP + operação, proteção complementar por processo
 DONATION_PIX_KEY = os.getenv('DONATION_PIX_KEY','').strip()
 DONATION_PIX_OWNER = os.getenv('DONATION_PIX_OWNER','').strip()
 
@@ -44,13 +49,42 @@ def wallet_public(player):
 def send_wallet(player):
     if not player.get('bot'):emit(player.get('ws'),'wallet',wallet=wallet_public(player))
 
-def wallet_change(player,delta,description,wallet_type='test'):
+def wallet_change(player,delta,description,wallet_type='test',event_key=None):
     if wallet_type!='test':
         raise ValueError('Carteira real indisponível; saldos nunca podem ser misturados.')
-    player['test_balance_cents']=player.get('test_balance_cents',TEST_START_BALANCE_CENTS)+delta
-    player.setdefault('wallet_history',[]).append(
-        {'amount_cents':delta,'description':description,'at':int(time.time())})
+    if player.get('authenticated') and not player.get('bot'):
+        event_key=event_key or secrets.token_urlsafe(30)
+        changes=accounts.apply_events([(player['id'],delta,description,event_key)])
+        player['test_balance_cents']=changes[0][1]
+        player['wallet_history']=accounts.history(player['id'])
+    else:
+        if player.get('test_balance_cents',0)+delta<0:
+            raise ValueError('Saldo fictício insuficiente.')
+        player['test_balance_cents']+=delta
+        player.setdefault('wallet_history',[]).append(
+            {'amount_cents':delta,'description':description,'at':int(time.time())})
     send_wallet(player)
+
+
+def charge_stakes(room,participants,amount):
+    """Debita o conjunto inteiro de jogadores humanos em uma transação.
+    Os bots não possuem contas nem recebem dinheiro real.
+    """
+    if not amount:return
+    next_round=room.get('round',0)+1
+    events=[(p['id'],-amount,'Entrada na rodada de teste',
+             f"entry:{room['code']}:{next_round}:{p['id']}")
+            for p in participants if p.get('authenticated') and not p.get('bot')]
+    fresh={acc_id:(balance,applied)
+           for acc_id,balance,applied in accounts.apply_events(events)} if events else {}
+    for p in participants:
+        if p['id'] in fresh:
+            p['test_balance_cents']=fresh[p['id']][0]
+            p['wallet_history']=accounts.history(p['id'])
+            send_wallet(p)
+        else:
+            # Necessário somente para bots e para testes locais sem banco.
+            wallet_change(p,-amount,'Entrada na rodada de teste')
 
 COLORS=['red','yellow','green','blue']
 ACTIONS=['skip','draw2','reverse','draw4']
@@ -170,6 +204,7 @@ def next_player(room,pid):
 
 def start(room):
     if room.get('wallet_type')!='test':return False
+    if room.get('started') and not room.get('winner'):return False
     participants=eligible(room)
     if len(participants)<2:return False
     # Treinamento contém um humano e robôs; salas online aceitam exclusivamente humanos.
@@ -182,9 +217,11 @@ def start(room):
         return False
     amount=room.get('stake',0)
     if amount and any(p.get('test_balance_cents',0)<amount for p in participants):return False
+    try:
+        charge_stakes(room,participants,amount)
+    except (accounts.AccountError, psycopg.Error):
+        return False
     room['pot_cents']=amount*len(participants)
-    if amount:
-        for p in participants:wallet_change(p,-amount,'Entrada na rodada de teste')
     room['round']=room.get('round',0)+1
     METRICS['matches_started']+=1
     room['deck']=build_deck()
@@ -205,7 +242,7 @@ def finalize(room,p):
         room['winner']=p['id'];room['turn']=None
         pot=room.get('pot_cents',0)
         if pot:
-            wallet_change(p,pot,'Prêmio da rodada de teste')
+            wallet_change(p,pot,'Prêmio da rodada de teste',event_key=f"prize:{room['code']}:{room['round']}:{p['id']}")
             room['pot_cents']=0
         notice(room,p['name']+f' venceu! Prêmio fictício: R$ {pot/100:.2f}.')
         sync(room)
@@ -407,11 +444,19 @@ def bots_schedule(room):
 
 def create_player(name,ws,token=None):
     pid=token or secrets.token_urlsafe(18)
-    return {'id':pid,'name':str(name).strip()[:20] or 'Jogador','ws':ws,'hand':[],'strikes':0,'out':False,'spectator':False,'bot':False,'room':None,'media':False,'test_balance_cents':TEST_START_BALANCE_CENTS,'wallet_history':[{'amount_cents':TEST_START_BALANCE_CENTS,'description':'Bônus único de boas-vindas para testes','at':int(time.time())}],'ad_free':False}
+    return {'id':pid,'name':str(name).strip()[:20] or 'Jogador','ws':ws,'hand':[],'strikes':0,'out':False,'spectator':False,'bot':False,'room':None,'media':False,'authenticated':False,'test_balance_cents':TEST_START_BALANCE_CENTS,'wallet_history':[{'amount_cents':TEST_START_BALANCE_CENTS,'description':'Bônus único de boas-vindas para testes','at':int(time.time())}],'ad_free':False}
 
 def error(ws,message): emit(ws,'error',message=message)
 
 async def websocket(request):
+    if not valid_origin(request):
+        raise web.HTTPForbidden(text='Origem não autorizada.')
+    try:
+        account=await asyncio.to_thread(accounts.from_session,request.cookies.get(AUTH_COOKIE))
+    except (accounts.AccountError, psycopg.Error):
+        raise web.HTTPServiceUnavailable(text='Autenticação indisponível.')
+    if not account:
+        raise web.HTTPUnauthorized(text='Entre na sua conta para jogar.')
     ws=web.WebSocketResponse(heartbeat=20,max_msg_size=100000)
     await ws.prepare(request)
     METRICS['total_ws_connections']+=1
@@ -426,17 +471,30 @@ async def websocket(request):
             METRICS['messages_received']+=1
             t=d.get('type')
             if t=='hello':
-                token=d.get('token')
-                if token in USERS:
-                    p=USERS[token]
+                # Nunca confiar em tokens ou nomes enviados por JSON no WebSocket.
+                # A identidade vem exclusivamente do cookie de sessão autenticado.
+                account_id=account['id']
+                if account_id in USERS:
+                    p=USERS[account_id]
                     old=p.get('ws')
                     if old and old!=ws: await old.close()
                     p['ws']=ws
-                    if p['room'] in ROOMS: sync(ROOMS[p['room']]);notice(ROOMS[p['room']],f"{p['name']} reconectou.")
+                    if p['room'] in ROOMS:
+                        sync(ROOMS[p['room']])
+                        notice(ROOMS[p['room']],f"{p['name']} reconectou.")
                 else:
-                    p=create_player(d.get('name'),ws)
+                    p=create_player(account['name'],ws,token=account_id)
                     USERS[p['id']]=p
-                emit(ws,'welcome',id=p['id'],room=p['room'],wallet=wallet_public(p))
+                p['authenticated']=True
+                p['name']=account['name']
+                p['test_balance_cents']=account['test_balance_cents']
+                p['ad_free']=account['ad_free']
+                try:
+                    p['wallet_history']=await asyncio.to_thread(accounts.history,account_id)
+                except (accounts.AccountError,psycopg.Error):
+                    p['wallet_history']=[]
+                emit(ws,'welcome',id=p['id'],room=p['room'],wallet=wallet_public(p),
+                     user={'username':account['username'],'name':account['name']})
                 continue
             if not p: error(ws,'Identificação necessária.');continue
             room=ROOMS.get(p['room']) if p['room'] else None
@@ -453,7 +511,6 @@ async def websocket(request):
                     error(ws,'Escolha o valor de entrada: de R$ 0 a R$ 50, em intervalos de R$ 5 (saldo de teste).');continue
                 if p.get('test_balance_cents',0)<amount:
                     error(ws,'Seu saldo de teste não cobre o valor escolhido para a sala.');continue
-                p['name']=str(d.get('name') or p['name']).strip()[:20] or 'Jogador'
                 room=make_room(p,mode,amount,visibility)
                 if mode=='training':
                     for i in range(3):
@@ -464,7 +521,6 @@ async def websocket(request):
                 if d.get('wallet_type','test')!='test':
                     error(ws,'Carteira real não pode entrar em partidas de teste.');continue
                 if room: error(ws,'Saia da sala anterior primeiro.');continue
-                p['name']=str(d.get('name') or p['name']).strip()[:20] or 'Jogador'
                 code=str(d.get('code','')).upper().strip();room=ROOMS.get(code)
                 if not room: error(ws,'Sala não encontrada.');continue
                 if room.get('wallet_type')!='test':
