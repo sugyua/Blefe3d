@@ -17,6 +17,7 @@ from psycopg.rows import dict_row
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 SESSION_SECONDS = 60 * 60 * 24 * 30
+GUEST_SESSION_SECONDS = 60 * 60 * 24 * 180
 HASHER = PasswordHasher(time_cost=2, memory_cost=65536, parallelism=2)
 TEST_START_BALANCE_CENTS = 5000
 USERNAME_RE = re.compile(r"^[a-zA-Z0-9_]{3,24}$")
@@ -55,6 +56,19 @@ def setup():
                   ad_free BOOLEAN NOT NULL DEFAULT FALSE,
                   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
+            """)
+            cur.execute("ALTER TABLE game_accounts ADD COLUMN IF NOT EXISTS is_guest BOOLEAN NOT NULL DEFAULT FALSE")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS game_guest_sessions (
+                  token_hash TEXT PRIMARY KEY,
+                  guest_id TEXT NOT NULL REFERENCES game_accounts(id) ON DELETE CASCADE,
+                  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  expires_at TIMESTAMPTZ NOT NULL
+                )
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_game_guest_sessions_id
+                ON game_guest_sessions (guest_id, expires_at)
             """)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS game_sessions (
@@ -100,7 +114,7 @@ def _session(conn, account_id):
 
 def _username(raw):
     name = str(raw or "").strip().lower()
-    if not USERNAME_RE.fullmatch(name):
+    if not USERNAME_RE.fullmatch(name) or name.startswith("visitante_"):
         raise AccountError("O login deve ter entre 3 e 24 caracteres: letras, números ou _.")
     return name
 
@@ -117,7 +131,8 @@ def _public(row):
     return {"id": row["id"], "username": row["username"],
             "name": row["display_name"],
             "test_balance_cents": row["test_balance_cents"],
-            "ad_free": row["ad_free"]}
+            "ad_free": row["ad_free"],
+            "guest": bool(row.get("is_guest",False))}
 
 
 def create(username, password):
@@ -162,7 +177,7 @@ def login(username, password):
         row = conn.execute(
             "SELECT * FROM game_accounts WHERE username=%s", (uname,)
         ).fetchone()
-        if not row:
+        if not row or row.get("is_guest"):
             raise AuthError("Login ou senha incorretos.")
         try:
             HASHER.verify(row["password_hash"], password)
@@ -180,7 +195,7 @@ def find_by_id(account_id, conn=None):
         with _db() as connection:
             return find_by_id(account_id, connection)
     return _public(conn.execute(
-        "SELECT id,username,display_name,test_balance_cents,ad_free "
+        "SELECT id,username,display_name,test_balance_cents,ad_free,is_guest "
         "FROM game_accounts WHERE id=%s", (account_id,)
     ).fetchone())
 
@@ -194,13 +209,58 @@ def from_session(token):
         return None
     with _db() as conn:
         row = conn.execute(
-            """SELECT a.id,a.username,a.display_name,a.test_balance_cents,a.ad_free
+            """SELECT a.id,a.username,a.display_name,a.test_balance_cents,a.ad_free,a.is_guest
                FROM game_accounts a
                JOIN game_sessions s ON s.account_id=a.id
-               WHERE s.token_hash=%s AND s.expires_at>NOW()""",
+               WHERE s.token_hash=%s AND s.expires_at>NOW() AND a.is_guest=FALSE""",
             (token_hash,),
         ).fetchone()
         return _public(row)
+
+
+def from_guest_session(token):
+    """A carteira de visitante é identificada por cookie secreto, nunca pelo IP."""
+    if not token or len(token)>160:
+        return None
+    try:
+        hashed=_hash_token(token)
+    except (UnicodeEncodeError,TypeError,AttributeError):
+        return None
+    with _db() as conn:
+        row=conn.execute(
+            """SELECT a.id,a.username,a.display_name,a.test_balance_cents,a.ad_free,a.is_guest
+               FROM game_accounts a JOIN game_guest_sessions s ON s.guest_id=a.id
+               WHERE s.token_hash=%s AND s.expires_at>NOW() AND a.is_guest=TRUE""",
+            (hashed,)
+        ).fetchone()
+        return _public(row)
+
+
+def create_guest():
+    """Cria um visitante único com R$ 50 fictícios e sessão limitada ao navegador."""
+    account_id=secrets.token_urlsafe(24)
+    username="visitante_"+secrets.token_hex(7)
+    name="Visitante "+secrets.token_hex(2).upper()
+    token=secrets.token_urlsafe(40)
+    with _db() as conn:
+        with conn.transaction():
+            conn.execute(
+                """INSERT INTO game_accounts
+                   (id,username,display_name,password_hash,test_balance_cents,is_guest)
+                   VALUES (%s,%s,%s,%s,%s,TRUE)""",
+                (account_id,username,name,"!guest-no-password",TEST_START_BALANCE_CENTS))
+            conn.execute(
+                """INSERT INTO game_guest_sessions (token_hash,guest_id,expires_at)
+                   VALUES (%s,%s,%s)""",
+                (_hash_token(token),account_id,
+                 datetime.now(timezone.utc)+timedelta(seconds=GUEST_SESSION_SECONDS)))
+            conn.execute(
+                """INSERT INTO game_wallet_events
+                   (event_key,account_id,amount_cents,description)
+                   VALUES (%s,%s,%s,%s)""",
+                ("guest-welcome:"+account_id,account_id,TEST_START_BALANCE_CENTS,
+                 "Bônus de teste do visitante"))
+        return find_by_id(account_id,conn),token
 
 
 def logout(token):
