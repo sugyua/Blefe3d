@@ -1,4 +1,4 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#10213d"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Blefe Color"><meta name="application-name" content="Blefe Color"><meta name="description" content="Jogo de cartas coloridas com blefe, partidas online entre amigos e treino grátis. Sem dinheiro real."><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png"><link rel="icon" type="image/svg+xml" href="/static/icon.svg"><title>Blefe Color — Testes</title><link rel="stylesheet" href="/static/style.css?v=20261117welcome02"><link rel="stylesheet" href="/static/shop.css?v=20261117shop1"></head><body>
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#10213d"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Blefe Color"><meta name="application-name" content="Blefe Color"><meta name="description" content="Jogo de cartas coloridas com blefe, partidas online entre amigos e treino grátis. Sem dinheiro real."><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png"><link rel="icon" type="image/svg+xml" href="/static/icon.svg"><title>Blefe Color — Testes</title><link rel="stylesheet" href="/static/style.css?v=20261117home03"><link rel="stylesheet" href="/static/shop.css?v=20261117shop1"></head><body>
 <div id="accountBar" class="accountBar" role="banner">
   <div class="accountLogo">♠ <span>BLEFE</span> COLOR</div>
   <div class="accountControls">
@@ -10,50 +10,91 @@
   </div>
 </div>
 <div id="app">
- <section id="lobby" class="overlay"><div class="welcome"><div class="brand">♠ BLEFE <span>COLOR</span></div><p>Jogue, desconfie e descubra quem está mentindo.</p><div class="lobbyTools"><button id="openShop" class="shopOpenButton"><span aria-hidden="true">✦</span> Loja de skins <small>PERSONALIZE</small></button><button id="openWallet">Carteira</button><button id="openDonation">Apoiar via Pix</button></div>
-<div class="pwaButtons"><button id="installApp" class="pwaInstall">Instalar jogo no celular</button><button id="showGuideFromLobby">Como jogar?</button></div><p id="lobbyIdentity" class="lobbyIdentity">Você pode jogar com saldo fictício sem criar conta. Para proteger o saldo entre dispositivos, faça login.</p><div class="stack">
-<button id="publicBrowse" class="primary">Encontrar salas públicas</button>
-<div class="trainingOptions">
-  <label for="trainingStake">Treino contra bots — entrada com saldo fictício</label>
-  <select id="trainingStake">
-    <option value="0" selected>Treino grátis — R$ 0,00</option>
-    <option value="500">R$ 5,00 de teste</option>
-    <option value="1000">R$ 10,00 de teste</option>
-    <option value="1500">R$ 15,00 de teste</option>
-    <option value="2000">R$ 20,00 de teste</option>
-    <option value="2500">R$ 25,00 de teste</option>
-    <option value="3000">R$ 30,00 de teste</option>
-    <option value="3500">R$ 35,00 de teste</option>
-    <option value="4000">R$ 40,00 de teste</option>
-    <option value="4500">R$ 45,00 de teste</option>
-    <option value="5000">R$ 50,00 de teste</option>
-  </select>
-  <small>Ao abandonar ou fechar o treino, a sala termina imediatamente. A entrada fictícia descontada não é devolvida.</small>
-  <button id="training">Jogar contra 3 bots</button>
-</div>
-<div class="createStakeField">
-  <label for="roomVisibility">Tipo de sala</label>
-<select id="roomVisibility"><option value="private">Privada — somente convidados</option><option value="public">Pública — aparece na busca de partidas</option></select>
-<label for="createStake">Entrada por jogador na sala (saldo de teste)</label>
-  <select id="createStake" required>
-    <option value="" selected>Selecione o valor para criar a sala</option>
-    <option value="0">Grátis — R$ 0,00</option>
-    <option value="500">R$ 5,00 de teste</option>
-    <option value="1000">R$ 10,00 de teste</option>
-    <option value="1500">R$ 15,00 de teste</option>
-    <option value="2000">R$ 20,00 de teste</option>
-    <option value="2500">R$ 25,00 de teste</option>
-    <option value="3000">R$ 30,00 de teste</option>
-    <option value="3500">R$ 35,00 de teste</option>
-    <option value="4000">R$ 40,00 de teste</option>
-    <option value="4500">R$ 45,00 de teste</option>
-    <option value="5000">R$ 50,00 de teste</option>
-  </select>
-  <small>A entrada será descontada somente quando a partida começar. Sem dinheiro real.</small>
-</div>
-<button id="create">Criar sala privada</button>
-<div class="join"><input id="roomcode" maxlength="6" placeholder="CÓDIGO DA SALA" autocapitalize="characters"><button id="join">Entrar</button></div>
-<div id="joinPreview" class="joinPreview" aria-live="polite" hidden></div></div><small>Criado por Sugya • Testes • Sem dinheiro real</small><footer class="moderationFooter" aria-label="Aviso de moderação"><p>As partidas podem ser acompanhadas pela moderação. O acompanhamento não inclui áudio ou vídeo; qualquer transmissão futura à administração exigirá consentimento claro dos participantes.</p></footer></div></section>
+ <section id="lobby" class="overlay">
+  <div class="welcome homeCompact">
+    <div class="brand">♠ BLEFE <span>COLOR</span></div>
+    <p class="homeTagline">Jogue, blefe e divirta-se.</p>
+    <div class="homeMainActions">
+      <button id="trainingFree" class="primary homeMainButton" type="button">Treino grátis</button>
+      <button id="publicBrowse" class="homeMainButton" type="button">Salas públicas</button>
+      <div class="homeRoomActions">
+        <button id="showCreateRoom" type="button" aria-expanded="false" aria-controls="createRoomPanel">Criar sala</button>
+        <button id="showJoinRoom" type="button" aria-expanded="false" aria-controls="joinRoomPanel">Entrar com código</button>
+      </div>
+      <div id="createRoomPanel" class="homeInlinePanel" hidden>
+        <div class="createStakeField">
+          <label for="roomVisibility">Tipo de sala</label>
+          <select id="roomVisibility">
+            <option value="private">Privada — amigos convidados</option>
+            <option value="public">Pública — qualquer jogador</option>
+          </select>
+          <label for="createStake">Entrada fictícia por jogador</label>
+          <select id="createStake">
+            <option value="0" selected>Grátis — R$ 0,00</option>
+<option value="500">R$ 5,00 de teste</option>
+<option value="1000">R$ 10,00 de teste</option>
+<option value="1500">R$ 15,00 de teste</option>
+<option value="2000">R$ 20,00 de teste</option>
+<option value="2500">R$ 25,00 de teste</option>
+<option value="3000">R$ 30,00 de teste</option>
+<option value="3500">R$ 35,00 de teste</option>
+<option value="4000">R$ 40,00 de teste</option>
+<option value="4500">R$ 45,00 de teste</option>
+<option value="5000">R$ 50,00 de teste</option>
+          </select>
+          <small>A entrada só é descontada ao iniciar a partida. Não envolve dinheiro real.</small>
+        </div>
+        <button id="create" type="button" class="primary">Criar sala</button>
+      </div>
+      <div id="joinRoomPanel" class="homeInlinePanel" hidden>
+        <label for="roomcode">Código recebido de um amigo</label>
+        <div class="join"><input id="roomcode" maxlength="6" placeholder="CÓDIGO DA SALA" autocomplete="off" autocapitalize="characters"><button id="join" type="button">Entrar</button></div>
+        <div id="joinPreview" class="joinPreview" aria-live="polite" hidden></div>
+      </div>
+    </div>
+    <details id="homeMoreMenu" class="homeMoreMenu">
+      <summary>Mais opções</summary>
+      <div class="homeMoreBody">
+        <div class="lobbyTools">
+          <button id="openShop" class="shopOpenButton" type="button"><span aria-hidden="true">✦</span> Loja de skins</button>
+          <button id="openWallet" type="button">Carteira</button>
+          <button id="openDonation" type="button">Apoiar o jogo</button>
+        </div>
+        <div class="pwaButtons">
+          <button id="showGuideFromLobby" type="button">Como jogar?</button>
+          <button id="installApp" class="pwaInstall" type="button">Instalar no celular</button>
+        </div>
+        <details class="homeTrainingExtras">
+          <summary>Treino com entrada de teste</summary>
+          <div class="trainingOptions">
+            <label for="trainingStake">Entrada fictícia</label>
+            <select id="trainingStake"><option value="0" selected>Grátis — R$ 0,00</option>
+<option value="500">R$ 5,00 de teste</option>
+<option value="1000">R$ 10,00 de teste</option>
+<option value="1500">R$ 15,00 de teste</option>
+<option value="2000">R$ 20,00 de teste</option>
+<option value="2500">R$ 25,00 de teste</option>
+<option value="3000">R$ 30,00 de teste</option>
+<option value="3500">R$ 35,00 de teste</option>
+<option value="4000">R$ 40,00 de teste</option>
+<option value="4500">R$ 45,00 de teste</option>
+<option value="5000">R$ 50,00 de teste</option></select>
+            <small>Se sair de um treino iniciado, a entrada fictícia não será devolvida.</small>
+            <button id="training" type="button">Iniciar treino com este valor</button>
+          </div>
+        </details>
+        <p id="lobbyIdentity" class="lobbyIdentity">Jogando com saldo fictício.</p>
+      </div>
+    </details>
+    <div class="homeFooter">
+      <small>Criado por Sugya · Saldo fictício, sem valor real</small>
+      <details class="homeLegal">
+        <summary>Privacidade e moderação</summary>
+        <footer class="moderationFooter" aria-label="Aviso de moderação"><p>As partidas podem ser acompanhadas pela moderação. O acompanhamento não inclui áudio ou vídeo; qualquer transmissão futura à administração exigirá consentimento claro dos participantes.</p></footer>
+      </details>
+    </div>
+  </div>
+</section>
  <section id="game" hidden>
   <header><div><strong>BLEFE COLOR</strong><small id="roomLabel"></small></div><div class="headActions"><button id="gameWallet" class="gameWallet" title="Consultar carteira">R$ 50,00</button><span id="connection">● Conectando</span><button id="helpBtn" title="Regras">?</button><button id="leaveBtn" title="Sair">✕</button></div></header>
   <div id="topArea"><div id="turnBanner">Aguardando jogadores...</div><div id="peerCameras" class="peerCameras"></div><div class="mediaButtons"><button id="voiceBtn">🎙 Ativar voz</button><button id="camBtn">📷 Câmera</button><button id="micBtn" disabled>🔊 Microfone ligado</button></div></div>
@@ -211,4 +252,4 @@
   </div>
  </div>
  <div id="guide" class="modal" hidden><div class="modalInner"><h2>Como jogar</h2><p>1. Cada jogador recebe sete cartas. Combine a cor ou o número da carta da mesa.</p><p>2. As cartas de ação são jogadas viradas para baixo. Você declara BLOQUEIO, +2, +4 ou INVERTER e pode blefar.</p><p>3. Ao receber um +2 ou +4, você pode empilhar outro +2 ou +4 que esteja na sua mão. A carta empilhada continua virada para baixo: você pode declarar +2 ou +4 e até blefar sobre seu valor.</p><p>4. A pilha soma todas as compras: +2, +4, +6, +8 e assim por diante. Quem não tiver +2 ou +4 deve aceitar e comprar tudo, ou duvidar da última declaração.</p><p>5. Se duvidar errado, compre a pilha inteira e mais uma carta. Se descobrir mentira, o último jogador compra duas cartas e a pilha é cancelada.</p><p>6. Vence quem ficar sem cartas. Fora de uma pilha, você pode comprar uma carta e passar a vez.</p><button id="closeGuide">Entendi</button></div></div>
-</div><script src="/static/app.js?v=20261117guest01" defer></script><script src="/static/shop.js?v=20261117shop1" defer></script><script src="/static/pwa.js?v=20261117pwa02" defer></script></body></html>
+</div><script src="/static/app.js?v=20261117home03" defer></script><script src="/static/shop.js?v=20261117shop1" defer></script><script src="/static/pwa.js?v=20261117home03" defer></script></body></html>
