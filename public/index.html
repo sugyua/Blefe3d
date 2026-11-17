@@ -1,4 +1,4 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#10213d"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Blefe Color"><meta name="application-name" content="Blefe Color"><meta name="description" content="Jogo de cartas coloridas com blefe, partidas online entre amigos e treino grátis. Sem dinheiro real."><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png"><link rel="icon" type="image/svg+xml" href="/static/icon.svg"><title>Blefe Color — Testes</title><link rel="stylesheet" href="/static/style.css?v=20261117guest01"></head><body>
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#10213d"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Blefe Color"><meta name="application-name" content="Blefe Color"><meta name="description" content="Jogo de cartas coloridas com blefe, partidas online entre amigos e treino grátis. Sem dinheiro real."><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png"><link rel="icon" type="image/svg+xml" href="/static/icon.svg"><title>Blefe Color — Testes</title><link rel="stylesheet" href="/static/style.css?v=20261117guest01"><link rel="stylesheet" href="/static/shop.css?v=20261117shop1"></head><body>
 <div id="accountBar" class="accountBar" role="banner">
   <div class="accountLogo">♠ <span>BLEFE</span> COLOR</div>
   <div class="accountControls">
@@ -10,7 +10,7 @@
   </div>
 </div>
 <div id="app">
- <section id="lobby" class="overlay"><div class="welcome"><div class="brand">♠ BLEFE <span>COLOR</span></div><p>Jogue, desconfie e descubra quem está mentindo.</p><div class="lobbyTools"><button id="openWallet">Carteira</button><button id="openDonation">Apoiar via Pix</button></div>
+ <section id="lobby" class="overlay"><div class="welcome"><div class="brand">♠ BLEFE <span>COLOR</span></div><p>Jogue, desconfie e descubra quem está mentindo.</p><div class="lobbyTools"><button id="openShop" class="shopOpenButton"><span aria-hidden="true">✦</span> Loja de skins <small>PERSONALIZE</small></button><button id="openWallet">Carteira</button><button id="openDonation">Apoiar via Pix</button></div>
 <div class="pwaButtons"><button id="installApp" class="pwaInstall">Instalar jogo no celular</button><button id="showGuideFromLobby">Como começar?</button></div><p id="lobbyIdentity" class="lobbyIdentity">Você pode jogar com saldo fictício sem criar conta. Para proteger o saldo entre dispositivos, faça login.</p><div class="stack">
 <button id="publicBrowse" class="primary">Encontrar salas públicas</button>
 <div class="trainingOptions">
@@ -116,7 +116,49 @@
     <button id="closeInstall" class="primary">Entendi</button>
   </div>
 </div>
-<div id="claimPanel" class="modal" hidden><div class="modalInner"><h2>O que você declara?</h2><p>A carta será colocada virada para baixo. Os outros só ouvirão sua declaração.</p><div class="claimGrid"><button data-claim="skip">BLOQUEIO</button><button data-claim="draw2">+2</button><button data-claim="draw4">+4</button><button data-claim="reverse">INVERTER</button></div><p>Cor escolhida para o +4 / curinga:</p><div id="colors" class="claimGrid"><button data-color="red">🔴</button><button data-color="yellow">🟡</button><button data-color="green">🟢</button><button data-color="blue">🔵</button></div><button id="cancelClaim">Cancelar</button></div></div><div id="walletModal" class="modal" hidden><div class="modalInner moneyModal"><div class="moneyEyebrow">CARTEIRA VIRTUAL</div><h2>Seu saldo de teste</h2><div class="walletTypeGrid">
+<div id="claimPanel" class="modal" hidden><div class="modalInner"><h2>O que você declara?</h2><p>A carta será colocada virada para baixo. Os outros só ouvirão sua declaração.</p><div class="claimGrid"><button data-claim="skip">BLOQUEIO</button><button data-claim="draw2">+2</button><button data-claim="draw4">+4</button><button data-claim="reverse">INVERTER</button></div><p>Cor escolhida para o +4 / curinga:</p><div id="colors" class="claimGrid"><button data-color="red">🔴</button><button data-color="yellow">🟡</button><button data-color="green">🟢</button><button data-color="blue">🔵</button></div><button id="cancelClaim">Cancelar</button></div></div><div id="shopModal" class="modal shopOverlay" hidden>
+  <div id="shopDialog" class="shopDialog" role="dialog" aria-modal="true" aria-labelledby="shopTitle" tabindex="-1">
+    <div class="shopHeader">
+      <div class="shopHeaderMain">
+        <div class="shopKicker"><span class="shopKickerDot" aria-hidden="true"></span> PERSONALIZAÇÃO · FASE 1</div>
+        <h2 id="shopTitle">Seu estilo. Seu blefe.</h2>
+        <p>Personalize suas cartas, sua mesa e a moldura do seu avatar. O jogo continua igual para todos.</p>
+      </div>
+      <div class="shopHeaderRight">
+        <div class="shopCollectionCounter"><span>SEU ACERVO</span><strong id="shopOwnedCount">—</strong><small>itens disponíveis</small></div>
+        <button id="shopClose" type="button" aria-label="Fechar loja">✕</button>
+      </div>
+    </div>
+    <div class="shopTabs" id="shopTabs" aria-label="Categorias de personalização">
+      <button type="button" data-shop-slot="back" aria-pressed="true"><span aria-hidden="true">🂠</span> Cartas</button>
+      <button type="button" data-shop-slot="table" aria-pressed="false"><span aria-hidden="true">♠</span> Mesas</button>
+      <button type="button" data-shop-slot="frame" aria-pressed="false"><span aria-hidden="true">✦</span> Molduras</button>
+    </div>
+    <div class="shopContent">
+      <section class="shopCollection" aria-label="Catálogo de cosméticos">
+        <div class="shopSectionHeading"><div><span class="shopEyebrow">COLEÇÃO INICIAL</span><h3 id="shopCategoryTitle">Versos de cartas</h3></div><span id="shopItemCount" class="shopItemCount">—</span></div>
+        <div id="shopGrid" class="shopGrid" aria-live="polite"></div>
+      </section>
+      <aside class="shopPreviewPanel" aria-label="Prévia do item selecionado">
+        <div class="shopPreviewTop"><span class="shopEyebrow">PRÉVIA AO VIVO</span><span id="shopPreviewStatus" class="shopPreviewStatus">GRÁTIS</span></div>
+        <div id="shopPreviewScene" class="shopPreviewScene" data-skin="back_classic">
+          <div class="shopSampleCards" aria-hidden="true"><div class="shopSampleBack shopSampleBackA"><b>♠</b></div><div class="shopSampleBack shopSampleBackB"><b>✦</b></div><div class="shopSampleBack shopSampleBackC"><b>♠</b></div></div>
+          <div class="shopSampleTable" aria-hidden="true"><div class="shopSampleTableInner">BLEFE <b>COLOR</b></div></div>
+          <div class="shopSampleFrame" aria-hidden="true"><span>J</span><small>JOGADOR</small></div>
+        </div>
+        <div class="shopPreviewDetails">
+          <h3 id="shopPreviewName">Clássico</h3>
+          <p id="shopPreviewDescription">Selecione um item para visualizar.</p>
+          <div class="shopPreviewPrice" id="shopPreviewPrice">Grátis</div>
+          <button type="button" class="shopEquipButton" id="shopEquipButton" disabled>Selecionar item</button>
+          <p id="shopMessage" class="shopMessage" aria-live="polite"></p>
+        </div>
+      </aside>
+    </div>
+    <footer class="shopFooter"><span><strong>SEM PAGAMENTOS</strong> · Os itens premium são apenas prévias. O saldo fictício nunca é utilizado para comprar cosméticos.</span><button type="button" id="shopFooterClose">Voltar ao menu</button></footer>
+  </div>
+</div>
+<div id="walletModal" class="modal" hidden><div class="modalInner moneyModal"><div class="moneyEyebrow">CARTEIRA VIRTUAL</div><h2>Seu saldo de teste</h2><div class="walletTypeGrid">
   <div class="walletType testWallet"><span>SALDO DE TESTE</span><strong id="walletBigBalance">R$ 50,00</strong><small>Disponível somente em partidas de teste</small></div>
   <div class="walletType realWallet"><span>SALDO REAL</span><strong id="walletRealBalance">R$ 0,00</strong><small>Bloqueado e indisponível nesta versão</small></div>
 </div><p class="walletDisclaimer">Cada novo jogador recebe R$ 50,00 fictícios ao começar. Esse saldo só serve para simular entradas e prêmios, não possui valor monetário, não pode ser convertido em dinheiro e não pode ser sacado. As carteiras de teste e real são independentes e seus valores nunca podem ser transferidos entre elas.</p><button id="addBalance" disabled>Adicionar saldo — em breve</button><p class="walletFootnote">Pix, App Store e Google Play não estão conectados. Nenhuma cobrança é feita aqui.</p><div id="walletTransactions" class="walletTransactions"></div><button id="closeWallet">Fechar carteira</button></div></div>
@@ -170,4 +212,4 @@
   </div>
  </div>
  <div id="guide" class="modal" hidden><div class="modalInner"><h2>Como jogar</h2><p>1. Cada jogador recebe sete cartas. Combine a cor ou o número da carta da mesa.</p><p>2. As cartas de ação são jogadas viradas para baixo. Você declara BLOQUEIO, +2, +4 ou INVERTER e pode blefar.</p><p>3. Ao receber um +2 ou +4, você pode empilhar outro +2 ou +4 que esteja na sua mão. A carta empilhada continua virada para baixo: você pode declarar +2 ou +4 e até blefar sobre seu valor.</p><p>4. A pilha soma todas as compras: +2, +4, +6, +8 e assim por diante. Quem não tiver +2 ou +4 deve aceitar e comprar tudo, ou duvidar da última declaração.</p><p>5. Se duvidar errado, compre a pilha inteira e mais uma carta. Se descobrir mentira, o último jogador compra duas cartas e a pilha é cancelada.</p><p>6. Vence quem ficar sem cartas. Fora de uma pilha, você pode comprar uma carta e passar a vez.</p><button id="closeGuide">Entendi</button></div></div>
-</div><script src="/static/app.js?v=20261117guest01" defer></script><script src="/static/pwa.js?v=20261117pwa1" defer></script></body></html>
+</div><script src="/static/app.js?v=20261117guest01" defer></script><script src="/static/shop.js?v=20261117shop1" defer></script><script src="/static/pwa.js?v=20261117pwa1" defer></script></body></html>
