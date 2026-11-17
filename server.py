@@ -56,7 +56,9 @@ def wallet_change(player,delta,description,wallet_type='test',event_key=None):
         event_key=event_key or secrets.token_urlsafe(30)
         changes=accounts.apply_events([(player['id'],delta,description,event_key)])
         player['test_balance_cents']=changes[0][1]
-        player['wallet_history']=accounts.history(player['id'])
+        if changes[0][2]:
+            player.setdefault('wallet_history',[]).append(
+                {'amount_cents':delta,'description':description,'at':int(time.time())})
     else:
         if player.get('test_balance_cents',0)+delta<0:
             raise ValueError('Saldo fictício insuficiente.')
@@ -80,7 +82,10 @@ def charge_stakes(room,participants,amount):
     for p in participants:
         if p['id'] in fresh:
             p['test_balance_cents']=fresh[p['id']][0]
-            p['wallet_history']=accounts.history(p['id'])
+            if fresh[p['id']][1]:
+                p.setdefault('wallet_history',[]).append(
+                    {'amount_cents':-amount,'description':'Entrada na rodada de teste',
+                     'at':int(time.time())})
             send_wallet(p)
         else:
             # Necessário somente para bots e para testes locais sem banco.
@@ -698,6 +703,8 @@ async def api_register(request):
         account,token=await asyncio.to_thread(accounts.create,
             data.get('username'),data.get('password'))
         history=await asyncio.to_thread(accounts.history,account['id'])
+    except accounts.DatabaseUnavailable:
+        return auth_json({'error':'Banco de contas temporariamente indisponível.'},503)
     except accounts.AccountError as exc:
         return auth_json({'error':str(exc)},400)
     except psycopg.errors.UniqueViolation:
@@ -719,6 +726,8 @@ async def api_login(request):
         history=await asyncio.to_thread(accounts.history,account['id'])
     except accounts.AuthError:
         return auth_json({'error':'Login ou senha incorretos.'},401)
+    except accounts.DatabaseUnavailable:
+        return auth_json({'error':'Banco de contas temporariamente indisponível.'},503)
     except accounts.AccountError as exc:
         return auth_json({'error':str(exc)},400)
     except psycopg.Error:
