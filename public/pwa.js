@@ -37,7 +37,6 @@
     catch(e){renderInstallHelp()}
   });
   $('closeInstall')?.addEventListener('click',()=>hide(installModal));
-  $('showInstallHelp')?.addEventListener('click',renderInstallHelp);
   if(standalone())hide(installBtn);
 
   const seenKey='blefe_color_welcome_guide_v1';
