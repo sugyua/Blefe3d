@@ -57,6 +57,14 @@ Veja [regras e testes de visitantes e depósitos](docs/VISITANTES_E_DEPOSITOS.md
 
 ---
 
+## Loja visual — Fase 1 (protótipo funcional, sem pagamentos)
+
+A **Loja de skins** já conta com um catálogo projetado de **12 itens cosméticos** (versos de cartas, mesas temáticas e molduras de avatar), com **9 itens grátis para equipar** e **3 prévias premium ainda bloqueadas**. A escolha é persistida no PostgreSQL em contas e sessões de visitante, sem interferir em cartas, blefes ou saldos.
+
+**Acesso:** abra o [Blefe Color](https://blefe3d-teste.onrender.com/) e selecione **Loja de skins** no lobby depois da publicação do commit correspondente no Render. Itens premium são apenas prévias com preços ilustrativos; **não há checkout, cobranças, Pix, depósitos nem apostas reais** nesta fase.
+
+Documentação e instruções de testes: **[Loja Visual — Fase 1](docs/LOJA_FASE_1.md)**.
+
 ## Plano completo de monetização — sete modelos
 
 > **Estado: planejamento de produto, não implementação nem oferta comercial.** Os preços e prazos abaixo são hipóteses para testes, não valores contratados, projeções de faturamento ou recursos já disponíveis. O jogo continua gratuito, e o saldo de teste é **fictício e não conversível**. Nenhuma entrada, prêmio, depósito ou saque em dinheiro real deve ser ativado com base neste plano.

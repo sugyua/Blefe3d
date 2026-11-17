@@ -11,6 +11,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import psycopg
+import cosmetics
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError, VerifyMismatchError
 from psycopg.rows import dict_row
@@ -95,6 +96,26 @@ def setup():
             cur.execute("""
                 CREATE INDEX IF NOT EXISTS idx_game_wallet_events_user
                 ON game_wallet_events (account_id, created_at DESC)
+            """)
+            # Inventário independente de saldo fictício e de dinheiro real.
+            # Somente uma futura rotina administrativa validada concederá itens pagos.
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS game_cosmetic_entitlements (
+                  account_id TEXT NOT NULL REFERENCES game_accounts(id) ON DELETE CASCADE,
+                  product_id TEXT NOT NULL,
+                  source TEXT NOT NULL,
+                  granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (account_id, product_id)
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS game_cosmetic_equipped (
+                  account_id TEXT NOT NULL REFERENCES game_accounts(id) ON DELETE CASCADE,
+                  slot TEXT NOT NULL CHECK (slot IN ('back','table','frame')),
+                  product_id TEXT NOT NULL,
+                  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                  PRIMARY KEY (account_id, slot)
+                )
             """)
 
 
@@ -328,3 +349,68 @@ def apply_events(events):
                 )
                 results.append((account_id, new_balance, True))
         return results
+
+
+def cosmetic_state(account_id):
+    """Inventário e escolhas visuais persistentes, nunca derivadas do IP.
+
+    As opções gratuitas pertencem a todas as identidades (inclusive convidados).
+    Itens premium são catálogo ilustrativo, sem venda e sem acesso público ao grant.
+    """
+    with _db() as conn:
+        if not conn.execute(
+                "SELECT 1 FROM game_accounts WHERE id=%s", (account_id,)
+        ).fetchone():
+            raise AccountError("Conta não encontrada.")
+        grants=conn.execute(
+            "SELECT product_id FROM game_cosmetic_entitlements WHERE account_id=%s",
+            (account_id,),
+        ).fetchall()
+        owned=set(cosmetics.FREE_IDS)
+        for record in grants:
+            if record["product_id"] in cosmetics.ITEMS:
+                owned.add(record["product_id"])
+        equipped=dict(cosmetics.DEFAULTS)
+        rows=conn.execute(
+            "SELECT slot,product_id FROM game_cosmetic_equipped WHERE account_id=%s",
+            (account_id,),
+        ).fetchall()
+        for row in rows:
+            product=cosmetics.ITEMS.get(row["product_id"])
+            if (row["product_id"] in owned and
+                    product and product["slot"]==row["slot"]):
+                equipped[row["slot"]]=row["product_id"]
+        return {"owned":sorted(owned),"equipped":equipped}
+
+
+def equip_cosmetic(account_id, slot, product_id):
+    """Valida a propriedade e equipa sem qualquer movimentação financeira."""
+    product=cosmetics.item_for(slot,product_id)
+    with _db() as conn:
+        with conn.transaction():
+            owner=conn.execute(
+                "SELECT id FROM game_accounts WHERE id=%s FOR UPDATE",
+                (account_id,),
+            ).fetchone()
+            if not owner:
+                raise AccountError("Conta não encontrada.")
+            if not product["free"]:
+                granted=conn.execute(
+                    """SELECT 1 FROM game_cosmetic_entitlements
+                       WHERE account_id=%s AND product_id=%s""",
+                    (account_id,product_id),
+                ).fetchone()
+                if not granted:
+                    raise cosmetics.LockedCosmetic(
+                        "Este item premium está disponível apenas para prévia."
+                    )
+            conn.execute(
+                """INSERT INTO game_cosmetic_equipped
+                   (account_id,slot,product_id,updated_at)
+                   VALUES (%s,%s,%s,NOW())
+                   ON CONFLICT (account_id,slot)
+                   DO UPDATE SET product_id=EXCLUDED.product_id,
+                                 updated_at=NOW()""",
+                (account_id,slot,product_id),
+            )
+    return cosmetic_state(account_id)

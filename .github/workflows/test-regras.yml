@@ -37,8 +37,8 @@ jobs:
       - name: Instalar dependências
         run: python -m pip install -r requirements.txt
       - name: Compilar arquivos Python
-        run: python -m compileall -q server.py accounts.py tests
+        run: python -m compileall -q server.py accounts.py cosmetics.py tests
       - name: Verificar sintaxe do JavaScript
-        run: node --check public/app.js
+        run: node --check public/app.js && node --check public/shop.js
       - name: Testar abandono, carteira fictícia e salas humanas
         run: python -m unittest discover -s tests -v
