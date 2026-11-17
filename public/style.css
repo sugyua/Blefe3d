@@ -430,3 +430,11 @@
 .claimDialog .claimGrid [data-color]{background:#263f51;border-color:#5a7e8b}
 .claimDialog small{display:block;color:#b0c0cf;font-size:10px;line-height:1.55;margin:13px 0}
 .claimDialog #cancelClaim{width:100%;background:#2c394e;min-height:40px}
+
+/* Temporizador por jogador: ocupa pouco espaço em telas pequenas. */
+.turnStatus{display:flex;gap:7px;align-items:center;width:100%}
+.turnStatus #turnBanner{flex:1;min-width:0}
+.turnTimer{flex:0 0 52px;display:grid;place-items:center;min-height:37px;padding:4px 6px;border-radius:9px;background:#234c40;border:1px solid #59be99;color:#caffea;font-size:clamp(14px,4vw,19px);font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:.2px;box-shadow:inset 0 0 8px #0002}
+.turnTimer.urgent{background:#63332f;border-color:#f0a378;color:#fff0c8}
+.turnTimer[hidden]{display:none!important}
+@media(max-width:390px){.turnTimer{flex-basis:45px;min-height:35px;padding:3px}.turnStatus{gap:5px}}

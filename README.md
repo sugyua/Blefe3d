@@ -14,6 +14,16 @@ Jogo online de cartas e blefes para até quatro participantes, com salas públic
 - O modo PWA fornece ícone e experiência sem barras de navegador; **partidas ainda exigem internet**.
 - A instalação é gratuita; não está na App Store nem na Google Play.
 
+## Turnos de 30 segundos e mesas com bots
+
+**Tempo de jogo:** cada jogador tem **30 segundos para jogar** ou decidir se acredita/duvida de uma ação. O prazo é controlado pelo servidor e aparece no topo da tela. Quando acaba, o jogo **compra automaticamente 1 carta** para o jogador e **passa a vez**. Se havia uma ação pendente, a ação é aceita por falta de contestação e a pilha é encerrada, sem cobrar cartas adicionais além da penalidade de uma carta. Atualizar a página, entrar outro jogador ou trocar de aba não reinicia o prazo.
+
+**Oito mesas de treino social:** existem salas de bots de códigos exclusivos (de `BLC001` até `BLC008`) com nomes, entradas fictícias de R$ 0 a R$ 20 e **2 ou 3 bots identificados abertamente**. Elas aparecem em **Salas públicas**; salas privadas reais dos usuários **não são listadas**, para preservar os códigos de convite. Os bots realmente jogam e não representam jogadores humanos reais.
+
+**Entrada durante a partida:** um usuário pode selecionar a mesa de bots, aceitar o valor de entrada **fictício** e tomar o lugar de um bot sem reiniciar a rodada. Ele recebe **exatamente a mão e a vez** daquele bot. Se sair, um bot retoma sua mão; a entrada fictícia debitada **não é reembolsada**. É concedida uma breve janela de reconexão após perda de conexão.
+
+> Essas salas são uma forma de praticar enquanto a comunidade cresce. Elas não indicam presença de humanos e **não oferecem depósitos, saques ou apostas reais**. Com a partida encerrada e sem jogadores humanos na mesa, bots começam uma nova rodada.
+
 ## Nova regra de blefe: declarar ação **e** cor
 
 Em uma carta de ação colocada virada para baixo, o jogador (e os bots no treinamento) deve declarar **a ação e a cor**. O próximo jogador pode **acreditar** ou **duvidar**. Ao duvidar, o servidor revela a carta e confere a ação **e** a cor declaradas; se qualquer uma for falsa, o blefador compra **1 carta**, e uma pilha +2/+4 é cancelada.
