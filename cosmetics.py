@@ -74,7 +74,7 @@ class LockedCosmetic(ShopError):
 
 
 def item_for(slot, product_id):
-    if slot not in DEFAULTS or not isinstance(product_id, str):
+    if not isinstance(slot,str) or slot not in DEFAULTS or not isinstance(product_id,str):
         raise ShopError("Categoria ou item desconhecido.")
     item = ITEMS.get(product_id)
     if not item or item["slot"] != slot:
