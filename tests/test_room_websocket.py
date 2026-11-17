@@ -1,6 +1,7 @@
 """Smoke tests for room actions through the actual WebSocket endpoint."""
 import asyncio
 import unittest
+from unittest.mock import patch
 
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
@@ -16,20 +17,53 @@ class RoomWebSocketTests(unittest.IsolatedAsyncioTestCase):
         self.client = TestClient(TestServer(app))
         await self.client.start_server()
         self.sockets = []
+        self.identities = {}
+        self.auth_session_patch = patch.object(game.accounts,'from_session',
+            side_effect=lambda token: self.identities.get(token))
+        self.auth_history_patch = patch.object(game.accounts,'history',
+            return_value=[{'amount_cents':5000,
+                           'description':'Bônus único de boas-vindas para testes','at':0}])
+        self.auth_events_patch = patch.object(game.accounts,'apply_events',
+            side_effect=self.fake_wallet_entries)
+        self.auth_session_patch.start()
+        self.auth_history_patch.start()
+        self.auth_events_patch.start()
 
     async def asyncTearDown(self):
         for ws in self.sockets:
             await ws.close()
         await self.client.close()
+        self.auth_session_patch.stop()
+        self.auth_history_patch.stop()
+        self.auth_events_patch.stop()
         game.ROOMS.clear()
         game.USERS.clear()
 
+    def fake_wallet_entries(self, entries):
+        result=[]
+        for account_id,delta,description,key in entries:
+            player=game.USERS[account_id]
+            new_amount=player['test_balance_cents']+delta
+            if new_amount<0:raise game.accounts.AccountError('Saldo insuficiente')
+            result.append((account_id,new_amount,True))
+        return result
+
     async def connect(self, name):
-        ws = await self.client.ws_connect('/ws')
+        number=len(self.identities)+1
+        token=f'test-login-session-{number}'
+        account_id=f'authenticated-account-{number}'
+        self.identities[token]={
+            'id':account_id,'username':f'jogador{number}',
+            'name':name,'test_balance_cents':5000,'ad_free':False
+        }
+        origin=str(self.client.make_url('/').origin())
+        ws=await self.client.ws_connect('/ws',headers={
+            'Origin':origin,'Cookie':f'blefe_session={token}'
+        })
         self.sockets.append(ws)
-        await ws.send_json({'type': 'hello', 'name': name})
-        welcome = await self.receive_type(ws, 'welcome')
-        return ws, welcome['id']
+        await ws.send_json({'type':'hello'})
+        welcome=await self.receive_type(ws,'welcome')
+        return ws,welcome['id']
 
     async def receive_type(self, ws, kind):
         async with asyncio.timeout(3):

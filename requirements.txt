@@ -1,1 +1,3 @@
 aiohttp>=3.9,<4
+psycopg[binary]>=3.2,<4
+argon2-cffi>=23.1,<26

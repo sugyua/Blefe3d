@@ -60,7 +60,14 @@
   if(!invite){
     let seen=false;
     try{seen=localStorage.getItem(seenKey)==='1'}catch(e){}
-    if(!seen)setTimeout(()=>{if($('lobby')&&!$('lobby').hidden)show(tutorial)},550);
+    if(!seen){
+      const tryWelcome=()=>{
+        if(document.body.dataset.authenticated==='true'&&$('lobby')&&!$('lobby').hidden)
+          show(tutorial);
+      };
+      setTimeout(tryWelcome,550);
+      document.addEventListener('blefe:authenticated',tryWelcome,{once:true});
+    }
   }
   if('serviceWorker' in navigator&&location.protocol==='https:'){
     window.addEventListener('load',()=>{

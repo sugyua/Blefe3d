@@ -4,6 +4,9 @@ from collections import deque
 from pathlib import Path
 from aiohttp import web, WSMsgType
 from pwa_icons import icon_png
+from urllib.parse import urlparse
+import psycopg
+import accounts
 
 ROOT = Path(__file__).parent / 'public'
 ROOMS = {}
@@ -26,6 +29,9 @@ def joinable(room):
             and active_ws(player_by_id(room,room['host'])))
 
 TEST_START_BALANCE_CENTS = 5000
+AUTH_COOKIE='blefe_session'
+AUTH_RATE={}  # IP + operação, proteção complementar por processo
+AUTH_HASH_SEMAPHORE=asyncio.Semaphore(2)  # limita memória do Argon2
 DONATION_PIX_KEY = os.getenv('DONATION_PIX_KEY','').strip()
 DONATION_PIX_OWNER = os.getenv('DONATION_PIX_OWNER','').strip()
 
@@ -44,13 +50,47 @@ def wallet_public(player):
 def send_wallet(player):
     if not player.get('bot'):emit(player.get('ws'),'wallet',wallet=wallet_public(player))
 
-def wallet_change(player,delta,description,wallet_type='test'):
+def wallet_change(player,delta,description,wallet_type='test',event_key=None):
     if wallet_type!='test':
         raise ValueError('Carteira real indisponível; saldos nunca podem ser misturados.')
-    player['test_balance_cents']=player.get('test_balance_cents',TEST_START_BALANCE_CENTS)+delta
-    player.setdefault('wallet_history',[]).append(
-        {'amount_cents':delta,'description':description,'at':int(time.time())})
+    if player.get('authenticated') and not player.get('bot'):
+        event_key=event_key or secrets.token_urlsafe(30)
+        changes=accounts.apply_events([(player['id'],delta,description,event_key)])
+        player['test_balance_cents']=changes[0][1]
+        if changes[0][2]:
+            player.setdefault('wallet_history',[]).append(
+                {'amount_cents':delta,'description':description,'at':int(time.time())})
+    else:
+        if player.get('test_balance_cents',0)+delta<0:
+            raise ValueError('Saldo fictício insuficiente.')
+        player['test_balance_cents']+=delta
+        player.setdefault('wallet_history',[]).append(
+            {'amount_cents':delta,'description':description,'at':int(time.time())})
     send_wallet(player)
+
+
+def charge_stakes(room,participants,amount):
+    """Debita o conjunto inteiro de jogadores humanos em uma transação.
+    Os bots não possuem contas nem recebem dinheiro real.
+    """
+    if not amount:return
+    next_round=room.get('round',0)+1
+    events=[(p['id'],-amount,'Entrada na rodada de teste',
+             f"entry:{room['code']}:{next_round}:{p['id']}")
+            for p in participants if p.get('authenticated') and not p.get('bot')]
+    fresh={acc_id:(balance,applied)
+           for acc_id,balance,applied in accounts.apply_events(events)} if events else {}
+    for p in participants:
+        if p['id'] in fresh:
+            p['test_balance_cents']=fresh[p['id']][0]
+            if fresh[p['id']][1]:
+                p.setdefault('wallet_history',[]).append(
+                    {'amount_cents':-amount,'description':'Entrada na rodada de teste',
+                     'at':int(time.time())})
+            send_wallet(p)
+        else:
+            # Necessário somente para bots e para testes locais sem banco.
+            wallet_change(p,-amount,'Entrada na rodada de teste')
 
 COLORS=['red','yellow','green','blue']
 ACTIONS=['skip','draw2','reverse','draw4']
@@ -170,6 +210,7 @@ def next_player(room,pid):
 
 def start(room):
     if room.get('wallet_type')!='test':return False
+    if room.get('started') and not room.get('winner'):return False
     participants=eligible(room)
     if len(participants)<2:return False
     # Treinamento contém um humano e robôs; salas online aceitam exclusivamente humanos.
@@ -182,9 +223,11 @@ def start(room):
         return False
     amount=room.get('stake',0)
     if amount and any(p.get('test_balance_cents',0)<amount for p in participants):return False
+    try:
+        charge_stakes(room,participants,amount)
+    except (accounts.AccountError, psycopg.Error):
+        return False
     room['pot_cents']=amount*len(participants)
-    if amount:
-        for p in participants:wallet_change(p,-amount,'Entrada na rodada de teste')
     room['round']=room.get('round',0)+1
     METRICS['matches_started']+=1
     room['deck']=build_deck()
@@ -205,7 +248,7 @@ def finalize(room,p):
         room['winner']=p['id'];room['turn']=None
         pot=room.get('pot_cents',0)
         if pot:
-            wallet_change(p,pot,'Prêmio da rodada de teste')
+            wallet_change(p,pot,'Prêmio da rodada de teste',event_key=f"prize:{room['code']}:{room['round']}:{p['id']}")
             room['pot_cents']=0
         notice(room,p['name']+f' venceu! Prêmio fictício: R$ {pot/100:.2f}.')
         sync(room)
@@ -407,11 +450,19 @@ def bots_schedule(room):
 
 def create_player(name,ws,token=None):
     pid=token or secrets.token_urlsafe(18)
-    return {'id':pid,'name':str(name).strip()[:20] or 'Jogador','ws':ws,'hand':[],'strikes':0,'out':False,'spectator':False,'bot':False,'room':None,'media':False,'test_balance_cents':TEST_START_BALANCE_CENTS,'wallet_history':[{'amount_cents':TEST_START_BALANCE_CENTS,'description':'Bônus único de boas-vindas para testes','at':int(time.time())}],'ad_free':False}
+    return {'id':pid,'name':str(name).strip()[:20] or 'Jogador','ws':ws,'hand':[],'strikes':0,'out':False,'spectator':False,'bot':False,'room':None,'media':False,'authenticated':False,'test_balance_cents':TEST_START_BALANCE_CENTS,'wallet_history':[{'amount_cents':TEST_START_BALANCE_CENTS,'description':'Bônus único de boas-vindas para testes','at':int(time.time())}],'ad_free':False}
 
 def error(ws,message): emit(ws,'error',message=message)
 
 async def websocket(request):
+    if not valid_origin(request):
+        raise web.HTTPForbidden(text='Origem não autorizada.')
+    try:
+        account=await asyncio.to_thread(accounts.from_session,request.cookies.get(AUTH_COOKIE))
+    except (accounts.AccountError, psycopg.Error):
+        raise web.HTTPServiceUnavailable(text='Autenticação indisponível.')
+    if not account:
+        raise web.HTTPUnauthorized(text='Entre na sua conta para jogar.')
     ws=web.WebSocketResponse(heartbeat=20,max_msg_size=100000)
     await ws.prepare(request)
     METRICS['total_ws_connections']+=1
@@ -426,17 +477,30 @@ async def websocket(request):
             METRICS['messages_received']+=1
             t=d.get('type')
             if t=='hello':
-                token=d.get('token')
-                if token in USERS:
-                    p=USERS[token]
+                # Nunca confiar em tokens ou nomes enviados por JSON no WebSocket.
+                # A identidade vem exclusivamente do cookie de sessão autenticado.
+                account_id=account['id']
+                if account_id in USERS:
+                    p=USERS[account_id]
                     old=p.get('ws')
                     if old and old!=ws: await old.close()
                     p['ws']=ws
-                    if p['room'] in ROOMS: sync(ROOMS[p['room']]);notice(ROOMS[p['room']],f"{p['name']} reconectou.")
+                    if p['room'] in ROOMS:
+                        sync(ROOMS[p['room']])
+                        notice(ROOMS[p['room']],f"{p['name']} reconectou.")
                 else:
-                    p=create_player(d.get('name'),ws)
+                    p=create_player(account['name'],ws,token=account_id)
                     USERS[p['id']]=p
-                emit(ws,'welcome',id=p['id'],room=p['room'],wallet=wallet_public(p))
+                p['authenticated']=True
+                p['name']=account['name']
+                p['test_balance_cents']=account['test_balance_cents']
+                p['ad_free']=account['ad_free']
+                try:
+                    p['wallet_history']=await asyncio.to_thread(accounts.history,account_id)
+                except (accounts.AccountError,psycopg.Error):
+                    p['wallet_history']=[]
+                emit(ws,'welcome',id=p['id'],room=p['room'],wallet=wallet_public(p),
+                     user={'username':account['username'],'name':account['name']})
                 continue
             if not p: error(ws,'Identificação necessária.');continue
             room=ROOMS.get(p['room']) if p['room'] else None
@@ -453,7 +517,6 @@ async def websocket(request):
                     error(ws,'Escolha o valor de entrada: de R$ 0 a R$ 50, em intervalos de R$ 5 (saldo de teste).');continue
                 if p.get('test_balance_cents',0)<amount:
                     error(ws,'Seu saldo de teste não cobre o valor escolhido para a sala.');continue
-                p['name']=str(d.get('name') or p['name']).strip()[:20] or 'Jogador'
                 room=make_room(p,mode,amount,visibility)
                 if mode=='training':
                     for i in range(3):
@@ -464,7 +527,6 @@ async def websocket(request):
                 if d.get('wallet_type','test')!='test':
                     error(ws,'Carteira real não pode entrar em partidas de teste.');continue
                 if room: error(ws,'Saia da sala anterior primeiro.');continue
-                p['name']=str(d.get('name') or p['name']).strip()[:20] or 'Jogador'
                 code=str(d.get('code','')).upper().strip();room=ROOMS.get(code)
                 if not room: error(ws,'Sala não encontrada.');continue
                 if room.get('wallet_type')!='test':
@@ -574,6 +636,140 @@ async def websocket(request):
                     send_room(r,'media_peer',id=p['id'],ready=False)
                     notice(r,f"{p['name']} desconectou (pode reconectar).")
     return ws
+
+def valid_origin(request):
+    origin=request.headers.get('Origin','')
+    if not origin:
+        # GETs sem Origin (navegação normal) são permitidos. Os endpoints
+        # mutáveis exigem Origin; o handshake de navegador WebSocket o fornece.
+        return request.method=='GET' and request.path!='/ws'
+    parsed=urlparse(origin)
+    return parsed.scheme in ('http','https') and parsed.netloc.lower()==request.host.lower()
+
+
+def auth_limit(request,kind,maximum,window):
+    # Defesa adicional; as tentativas por IP/usuário devem ser monitoradas
+    # em Redis antes de ampliar o serviço para múltiplas instâncias.
+    key=(kind,request.remote or 'unknown')
+    now=time.monotonic()
+    tries=[when for when in AUTH_RATE.get(key,[]) if now-when<window]
+    if len(tries)>=maximum:
+        raise web.HTTPTooManyRequests(text='Muitas tentativas. Tente mais tarde.')
+    tries.append(now)
+    AUTH_RATE[key]=tries
+    if len(AUTH_RATE)>15000:
+        AUTH_RATE.clear()
+
+
+def auth_json(payload,status=200):
+    return web.json_response(payload,status=status,
+        headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
+
+
+def set_auth_cookie(request,response,token):
+    secure=request.secure or request.headers.get('X-Forwarded-Proto')=='https' or (
+        request.host.split(':')[0] not in ('localhost','127.0.0.1'))
+    response.set_cookie(AUTH_COOKIE,token,max_age=accounts.SESSION_SECONDS,
+        httponly=True,secure=secure,samesite='Lax',path='/')
+
+
+async def read_auth_body(request):
+    if not valid_origin(request):
+        raise web.HTTPForbidden(text='Origem não autorizada.')
+    if request.content_length is not None and request.content_length>4096:
+        raise web.HTTPRequestEntityTooLarge(max_size=4096,actual_size=request.content_length)
+    raw=await request.content.read(4097)
+    if len(raw)>4096:
+        raise web.HTTPRequestEntityTooLarge(max_size=4096,actual_size=len(raw))
+    try:
+        obj=json.loads(raw)
+    except (ValueError,UnicodeDecodeError):
+        raise web.HTTPBadRequest(text='Dados inválidos.')
+    if not isinstance(obj,dict):raise web.HTTPBadRequest(text='Dados inválidos.')
+    return obj
+
+
+def wallet_for_account(account,history):
+    temp=create_player(account['name'],None,account['id'])
+    temp['test_balance_cents']=account['test_balance_cents']
+    temp['wallet_history']=history
+    temp['ad_free']=account['ad_free']
+    return wallet_public(temp)
+
+
+async def api_register(request):
+    auth_limit(request,'register',5,3600)
+    data=await read_auth_body(request)
+    try:
+        async with AUTH_HASH_SEMAPHORE:
+            account,token=await asyncio.to_thread(accounts.create,
+                data.get('username'),data.get('password'))
+        history=await asyncio.to_thread(accounts.history,account['id'])
+    except accounts.DatabaseUnavailable:
+        return auth_json({'error':'Banco de contas temporariamente indisponível.'},503)
+    except accounts.AccountError as exc:
+        return auth_json({'error':str(exc)},400)
+    except psycopg.errors.UniqueViolation:
+        return auth_json({'error':'Este nome de usuário já está em uso.'},409)
+    except psycopg.Error:
+        return auth_json({'error':'Banco de contas temporariamente indisponível.'},503)
+    response=auth_json({'user':{'username':account['username'],'name':account['name']},
+        'wallet':wallet_for_account(account,history)},201)
+    set_auth_cookie(request,response,token)
+    return response
+
+
+async def api_login(request):
+    auth_limit(request,'login',12,900)
+    data=await read_auth_body(request)
+    try:
+        async with AUTH_HASH_SEMAPHORE:
+            account,token=await asyncio.to_thread(accounts.login,
+                data.get('username'),data.get('password'))
+        history=await asyncio.to_thread(accounts.history,account['id'])
+    except accounts.AuthError:
+        return auth_json({'error':'Login ou senha incorretos.'},401)
+    except accounts.DatabaseUnavailable:
+        return auth_json({'error':'Banco de contas temporariamente indisponível.'},503)
+    except accounts.AccountError as exc:
+        return auth_json({'error':str(exc)},400)
+    except psycopg.Error:
+        return auth_json({'error':'Banco de contas temporariamente indisponível.'},503)
+    response=auth_json({'user':{'username':account['username'],'name':account['name']},
+        'wallet':wallet_for_account(account,history)})
+    set_auth_cookie(request,response,token)
+    return response
+
+
+async def api_me(request):
+    token=request.cookies.get(AUTH_COOKIE)
+    try:
+        account=await asyncio.to_thread(accounts.from_session,token)
+        if not account:
+            return auth_json({'error':'Entre ou crie uma conta para jogar.'},401)
+        hist=await asyncio.to_thread(accounts.history,account['id'])
+    except (accounts.AccountError,psycopg.Error):
+        return auth_json({'error':'Banco de contas temporariamente indisponível.'},503)
+    return auth_json({'user':{'username':account['username'],'name':account['name']},
+        'wallet':wallet_for_account(account,hist)})
+
+
+async def api_logout(request):
+    await read_auth_body(request)
+    token=request.cookies.get(AUTH_COOKIE)
+    try:
+        account=await asyncio.to_thread(accounts.from_session,token)
+        await asyncio.to_thread(accounts.logout,token)
+    except (accounts.AccountError,psycopg.Error):
+        return auth_json({'error':'Não foi possível encerrar a sessão.'},503)
+    if account:
+        online=USERS.get(account['id'])
+        if online and active_ws(online):
+            await online['ws'].close(code=1008,message=b'Sessao encerrada')
+    response=auth_json({'ok':True})
+    response.del_cookie(AUTH_COOKIE,path='/')
+    return response
+
 
 async def index(request):
     return web.FileResponse(ROOT/'index.html',headers={'Cache-Control':'no-store'})
@@ -694,8 +890,24 @@ async def public_config(request):
         'donation_pix_owner':DONATION_PIX_OWNER,'donation_enabled':bool(DONATION_PIX_KEY),
         'withdrawals_enabled':False,'payments_enabled':False,'wallet_types':['test'],'real_betting_enabled':False})
 
-app=web.Application()
+async def initialize_accounts(app):
+    if not accounts.DATABASE_URL:
+        # Não aprovar uma publicação que impediria todos de entrar no jogo.
+        raise RuntimeError('DATABASE_URL não configurado: configure o PostgreSQL no Render antes do deploy.')
+    try:
+        await asyncio.to_thread(accounts.setup)
+    except Exception:
+        logging.getLogger('blefe.auth').exception('Falha na inicialização do banco de contas.')
+        raise
+
+
+app=web.Application(client_max_size=4096)
+app.on_startup.append(initialize_accounts)
 app.router.add_get('/',index)
+app.router.add_post('/api/auth/register',api_register)
+app.router.add_post('/api/auth/login',api_login)
+app.router.add_post('/api/auth/logout',api_logout)
+app.router.add_get('/api/auth/me',api_me)
 app.router.add_get('/manifest.webmanifest',pwa_manifest)
 app.router.add_get('/sw.js',pwa_service_worker)
 app.router.add_get('/icons/icon-{size}.png',pwa_icon)
