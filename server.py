@@ -30,6 +30,7 @@ def joinable(room):
 
 TEST_START_BALANCE_CENTS = 5000
 AUTH_COOKIE='blefe_session'
+GUEST_COOKIE='blefe_guest_session'
 AUTH_RATE={}  # IP + operação, proteção complementar por processo
 AUTH_HASH_SEMAPHORE=asyncio.Semaphore(2)  # limita memória do Argon2
 DONATION_PIX_KEY = os.getenv('DONATION_PIX_KEY','').strip()
@@ -53,7 +54,7 @@ def send_wallet(player):
 def wallet_change(player,delta,description,wallet_type='test',event_key=None):
     if wallet_type!='test':
         raise ValueError('Carteira real indisponível; saldos nunca podem ser misturados.')
-    if player.get('authenticated') and not player.get('bot'):
+    if (player.get('wallet_persistent') or player.get('authenticated')) and not player.get('bot'):
         event_key=event_key or secrets.token_urlsafe(30)
         changes=accounts.apply_events([(player['id'],delta,description,event_key)])
         player['test_balance_cents']=changes[0][1]
@@ -77,7 +78,7 @@ def charge_stakes(room,participants,amount):
     next_round=room.get('round',0)+1
     events=[(p['id'],-amount,'Entrada na rodada de teste',
              f"entry:{room['code']}:{next_round}:{p['id']}")
-            for p in participants if p.get('authenticated') and not p.get('bot')]
+            for p in participants if (p.get('wallet_persistent') or p.get('authenticated')) and not p.get('bot')]
     fresh={acc_id:(balance,applied)
            for acc_id,balance,applied in accounts.apply_events(events)} if events else {}
     for p in participants:
@@ -450,7 +451,7 @@ def bots_schedule(room):
 
 def create_player(name,ws,token=None):
     pid=token or secrets.token_urlsafe(18)
-    return {'id':pid,'name':str(name).strip()[:20] or 'Jogador','ws':ws,'hand':[],'strikes':0,'out':False,'spectator':False,'bot':False,'room':None,'media':False,'authenticated':False,'test_balance_cents':TEST_START_BALANCE_CENTS,'wallet_history':[{'amount_cents':TEST_START_BALANCE_CENTS,'description':'Bônus único de boas-vindas para testes','at':int(time.time())}],'ad_free':False}
+    return {'id':pid,'name':str(name).strip()[:20] or 'Jogador','ws':ws,'hand':[],'strikes':0,'out':False,'spectator':False,'bot':False,'room':None,'media':False,'authenticated':False,'wallet_persistent':False,'test_balance_cents':TEST_START_BALANCE_CENTS,'wallet_history':[{'amount_cents':TEST_START_BALANCE_CENTS,'description':'Bônus único de boas-vindas para testes','at':int(time.time())}],'ad_free':False}
 
 def error(ws,message): emit(ws,'error',message=message)
 
@@ -459,10 +460,12 @@ async def websocket(request):
         raise web.HTTPForbidden(text='Origem não autorizada.')
     try:
         account=await asyncio.to_thread(accounts.from_session,request.cookies.get(AUTH_COOKIE))
+        if not account:
+            account=await asyncio.to_thread(accounts.from_guest_session,request.cookies.get(GUEST_COOKIE))
     except (accounts.AccountError, psycopg.Error):
-        raise web.HTTPServiceUnavailable(text='Autenticação indisponível.')
+        raise web.HTTPServiceUnavailable(text='Carteira indisponível.')
     if not account:
-        raise web.HTTPUnauthorized(text='Entre na sua conta para jogar.')
+        raise web.HTTPUnauthorized(text='Abra o jogo para criar uma sessão de visitante ou entre em sua conta.')
     ws=web.WebSocketResponse(heartbeat=20,max_msg_size=100000)
     await ws.prepare(request)
     METRICS['total_ws_connections']+=1
@@ -491,7 +494,8 @@ async def websocket(request):
                 else:
                     p=create_player(account['name'],ws,token=account_id)
                     USERS[p['id']]=p
-                p['authenticated']=True
+                p['authenticated']=not account.get('guest',False)
+                p['wallet_persistent']=True
                 p['name']=account['name']
                 p['test_balance_cents']=account['test_balance_cents']
                 p['ad_free']=account['ad_free']
@@ -500,7 +504,8 @@ async def websocket(request):
                 except (accounts.AccountError,psycopg.Error):
                     p['wallet_history']=[]
                 emit(ws,'welcome',id=p['id'],room=p['room'],wallet=wallet_public(p),
-                     user={'username':account['username'],'name':account['name']})
+                     user={'username':account['username'],'name':account['name'],
+                           'guest':bool(account.get('guest',False))})
                 continue
             if not p: error(ws,'Identificação necessária.');continue
             room=ROOMS.get(p['room']) if p['room'] else None
@@ -695,6 +700,34 @@ def wallet_for_account(account,history):
     temp['wallet_history']=history
     temp['ad_free']=account['ad_free']
     return wallet_public(temp)
+
+
+async def api_guest_start(request):
+    # Cada visitante tem sessão e carteira próprias. O IP só participa do
+    # controle de abuso; nunca identifica ou autoriza um saldo.
+    await read_auth_body(request)
+    try:
+        existing=await asyncio.to_thread(accounts.from_guest_session,
+            request.cookies.get(GUEST_COOKIE))
+        if existing:
+            token=None
+            account=existing
+        else:
+            auth_limit(request,'guest_create',80,3600)
+            account,token=await asyncio.to_thread(accounts.create_guest)
+        history=await asyncio.to_thread(accounts.history,account['id'])
+    except (accounts.DatabaseUnavailable,psycopg.Error):
+        return auth_json({'error':'Carteira de visitante indisponível.'},503)
+    response=auth_json({
+        'user':{'username':account['username'],'name':account['name'],'guest':True},
+        'wallet':wallet_for_account(account,history)
+    })
+    if token:
+        secure=request.secure or request.headers.get('X-Forwarded-Proto')=='https' or (
+            request.host.split(':')[0] not in ('localhost','127.0.0.1'))
+        response.set_cookie(GUEST_COOKIE,token,max_age=accounts.GUEST_SESSION_SECONDS,
+            httponly=True,secure=secure,samesite='Lax',path='/')
+    return response
 
 
 async def api_register(request):
@@ -904,6 +937,7 @@ async def initialize_accounts(app):
 app=web.Application(client_max_size=4096)
 app.on_startup.append(initialize_accounts)
 app.router.add_get('/',index)
+app.router.add_post('/api/guest/start',api_guest_start)
 app.router.add_post('/api/auth/register',api_register)
 app.router.add_post('/api/auth/login',api_login)
 app.router.add_post('/api/auth/logout',api_logout)
