@@ -30,6 +30,16 @@ python server.py
 
 O servidor usa **aiohttp** e WebSocket. As salas ainda são mantidas em memória e podem ser encerradas em reinícios; contas e saldos fictícios ficam no PostgreSQL. Antes de qualquer operação com dinheiro real, o projeto exigiria revisão legal e arquitetura adequada.
 
+## Publicação automática no Render
+
+O projeto possui um pipeline de deploy em **GitHub Actions**, que roda os testes antes de solicitar uma publicação no Render **apenas após merge/push em `main`**. O deploy via GitHub Actions não é executado em branches de pull requests.
+
+**Configuração única pendente:** cadastrar o segredo `RENDER_DEPLOY_HOOK_URL` em **GitHub → Settings → Secrets and variables → Actions**, usando a URL privada de **Deploy Hook** obtida em **Render → Settings**. **Não cole o hook em commits ou mensagens.** Sem esse segredo, o workflow avisa que a publicação não foi solicitada.
+
+Instruções de ativação, validação e prevenção de deploy duplicado: **[Publicação automática GitHub → Render](docs/DEPLOY_AUTOMATICO.md)**.
+
+O endereço público permanece **https://blefe3d-teste.onrender.com/**. Um job concluído no GitHub indica somente que o Render recebeu o pedido; confirme o status **Live** no painel antes de considerar a publicação concluída.
+
 ## Planejamento e divulgação
 - [Roadmap das próximas 20 atualizações (0.10–0.29)](ROADMAP.md)
 - [Página e descrição para itch.io](marketing/ITCH_IO.md)
