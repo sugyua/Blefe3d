@@ -292,3 +292,7 @@
 .introSteps span{font-size:13px;color:#f3f8ff;line-height:1.4}
 .pwaDialog .introWarning{background:#1b312b;color:#baeacf;padding:10px 12px;border-radius:9px;font-size:11px;line-height:1.4}
 @media(max-width:380px){.pwaButtons{grid-template-columns:1fr 1fr}.pwaButtons button{font-size:11px;padding:9px 3px}}
+
+/* Aviso de moderação no rodapé do lobby: discreto, legível e acessível. */
+.moderationFooter{margin-top:14px;padding-top:10px;border-top:1px solid #33445c;text-align:center}
+.welcome .moderationFooter p{margin:0;font-size:11px;line-height:1.5;color:#a6b5c7;font-weight:400}
