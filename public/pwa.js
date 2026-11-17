@@ -48,9 +48,7 @@
   $('welcomeClose')?.addEventListener('click',dismissWelcome);
   $('welcomeTraining')?.addEventListener('click',()=>{
     dismissWelcome();
-    $('trainingStake').value='0';
-    $('training')?.scrollIntoView({behavior:'smooth',block:'center'});
-    $('training')?.focus();
+    $('trainingFree')?.click();
   });
   $('welcomePublic')?.addEventListener('click',()=>{
     dismissWelcome();
