@@ -175,6 +175,23 @@ function startNamed(type,extra){
   }
   send(type,{...extra,wallet_type:'test'});
 }
+function showHomeRoomPanel(which,force=false){
+  const create=$('createRoomPanel');
+  const join=$('joinRoomPanel');
+  const current=which==='create'?create:join;
+  const shouldOpen=force||current.hidden;
+  create.hidden=true;join.hidden=true;
+  if(shouldOpen)current.hidden=false;
+  $('showCreateRoom').setAttribute('aria-expanded',String(!create.hidden));
+  $('showJoinRoom').setAttribute('aria-expanded',String(!join.hidden));
+  if(shouldOpen&&which==='join')$('roomcode').focus();
+}
+$('showCreateRoom').onclick=()=>showHomeRoomPanel('create');
+$('showJoinRoom').onclick=()=>showHomeRoomPanel('join');
+$('trainingFree').onclick=()=>{
+  $('trainingStake').value='0';
+  $('training').click();
+};
 $('training').onclick=()=>{
   const amount=Number($('trainingStake').value);
   const balance=state.wallet?.test?.balance_cents??state.wallet?.balance_cents??0;
@@ -246,6 +263,7 @@ async function refreshPublicRooms(){
       action.textContent='Ver entrada e participar';
       action.onclick=()=>{
         closePublicRooms();$('roomcode').value=room.code;
+        showHomeRoomPanel('join',true);
         previewRoom(room.code);
       };
       item.append(header,sub,action);list.append(item);
@@ -900,5 +918,5 @@ document.addEventListener('visibilitychange',()=>{
   }
 });
 const invitation=new URLSearchParams(location.search).get('sala');
-if(invitation){$('roomcode').value=invitation.toUpperCase();previewRoom(invitation)}
+if(invitation){$('roomcode').value=invitation.toUpperCase();showHomeRoomPanel('join',true);previewRoom(invitation)}
 bootAuth();

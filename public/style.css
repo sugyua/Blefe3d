@@ -359,3 +359,63 @@
   .accountControls{gap:5px}
   .accountBar .depositButton{padding:7px 8px}
 }
+
+/* Boas-vindas simples: regras detalhadas ficam em Como jogar?. */
+#welcomeGuide .welcomeSimple{width:min(92vw,400px)!important;padding:24px;box-shadow:0 22px 65px #000b}
+#welcomeGuide .welcomeSimple h2{margin:8px 0 12px}
+#welcomeGuide .welcomeSimple>p:not(.introWarning){margin:0 0 14px;line-height:1.45;color:#d7e3ef}
+#welcomeGuide .welcomeSimple .introWarning{margin:0 0 15px;padding:10px 12px}
+#welcomeGuide .welcomeSimple button{min-height:43px;margin-top:7px}
+@media(max-width:380px){#welcomeGuide .welcomeSimple{padding:19px}}
+
+/* Home mobile-first: somente ações principais. Funções extras ficam em Mais opções. */
+#lobby .homeCompact{width:min(100%,420px);max-width:420px;padding:clamp(18px,4vw,25px);border-radius:21px}
+#lobby .homeCompact .brand{font-size:clamp(30px,8vw,38px);line-height:1.05;letter-spacing:.5px}
+#lobby .homeCompact .homeTagline{font-size:13px;color:#afc2d2;margin:9px 0 20px;line-height:1.35}
+.homeMainActions{display:flex;flex-direction:column;gap:10px}
+.homeMainActions .homeMainButton{width:100%;min-height:50px;font-size:16px;border-radius:12px}
+.homeMainActions .homeMainButton.primary{background:linear-gradient(120deg,#128564,#249d7c);border:1px solid #4fc6a6;box-shadow:0 4px 16px #126c5244}
+.homeMainActions #publicBrowse{background:#2b4055;border-color:#4e6a83}
+.homeRoomActions{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.homeRoomActions button{min-height:46px;min-width:0;font-size:13px;padding:9px 7px;background:#202e43;border:1px solid #415871}
+.homeRoomActions button[aria-expanded="true"]{border-color:#6acbaa;color:#b7f8dc;background:#1d4545}
+.homeInlinePanel{background:#142236;border:1px solid #446478;border-radius:13px;padding:12px;display:grid;gap:10px;text-align:left}
+.homeInlinePanel[hidden]{display:none!important}
+#lobby .homeCompact label{display:block;text-align:left;margin:0 0 6px;font-size:12px;font-weight:750;color:#c8dce9}
+.homeInlinePanel .createStakeField{background:none;border:0;padding:0;gap:7px}
+.homeInlinePanel .createStakeField select,.homeInlinePanel .join input{font-size:14px}
+.homeInlinePanel .createStakeField small{margin:0!important;line-height:1.35;font-size:10px}
+.homeInlinePanel #create{min-height:44px;width:100%}
+.homeInlinePanel .join{margin-top:2px}
+.homeInlinePanel .join button{min-height:44px}
+.homeInlinePanel .joinPreview{padding:10px;margin-top:4px}
+#lobby .homeCompact .homeMoreMenu{margin-top:15px;text-align:left;border:1px solid #384a61;border-radius:12px;overflow:hidden;background:#1a293b}
+#lobby .homeCompact .homeMoreMenu>summary{list-style:none;display:flex;align-items:center;justify-content:center;gap:8px;text-align:center;min-height:42px;padding:9px 12px;cursor:pointer;color:#bbcee0;font-size:13px;font-weight:700}
+#lobby .homeCompact .homeMoreMenu>summary::-webkit-details-marker{display:none}
+#lobby .homeCompact .homeMoreMenu>summary:before{content:"⋯";font-size:22px;line-height:.7;color:#92d6bd}
+#lobby .homeCompact .homeMoreMenu[open]>summary{border-bottom:1px solid #394e62;color:#f0f8fe}
+#lobby .homeCompact .homeMoreBody{padding:11px;display:flex;flex-direction:column;gap:10px}
+#lobby .homeCompact .homeMoreBody .lobbyTools{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0}
+#lobby .homeCompact .homeMoreBody .lobbyTools #openShop{grid-column:1/-1;min-height:43px;font-size:14px;box-shadow:none;letter-spacing:0;padding:9px 12px}
+#lobby .homeCompact .homeMoreBody .lobbyTools #openShop span{font-size:17px}
+#lobby .homeCompact .homeMoreBody .lobbyTools button:not(#openShop){font-size:12px;padding:10px 6px}
+#lobby .homeCompact .homeMoreBody .pwaButtons{margin:0;gap:8px}
+#lobby .homeCompact .homeMoreBody .pwaButtons button{font-size:12px;padding:10px 4px}
+#lobby .homeCompact .homeTrainingExtras{border:1px solid #3b5167;border-radius:9px;background:#1b2a3e}
+#lobby .homeCompact .homeTrainingExtras>summary{padding:11px;cursor:pointer;font-size:12px;color:#b8d2e7}
+#lobby .homeCompact .homeTrainingExtras .trainingOptions{border:none;border-top:1px solid #3b5167;border-radius:0;padding:10px}
+#lobby .homeCompact .homeTrainingExtras .trainingOptions label{font-size:12px}
+#lobby .homeCompact .homeTrainingExtras .trainingOptions small{margin:0;font-size:11px}
+#lobby .homeCompact .lobbyIdentity{margin:0;text-align:center;font-size:11px;color:#a9c8c5}
+#lobby .homeCompact .homeFooter{padding-top:15px}
+#lobby .homeCompact .homeFooter>small{display:block;font-size:10px;color:#8296a8;margin:0}
+#lobby .homeCompact .homeLegal{margin-top:8px}
+#lobby .homeCompact .homeLegal>summary{font-size:10px;color:#879aad;cursor:pointer;list-style:none;text-decoration:underline;text-underline-offset:2px}
+#lobby .homeCompact .homeLegal>summary::-webkit-details-marker{display:none}
+#lobby .homeCompact .homeLegal .moderationFooter{margin-top:8px;padding-top:8px}
+#lobby .homeCompact .homeLegal .moderationFooter p{font-size:10px}
+@media(max-width:385px){
+  #lobby .homeCompact{padding:17px}
+  #lobby .homeCompact .brand{font-size:31px}
+  #lobby .homeCompact .homeTagline{margin-bottom:16px}
+}

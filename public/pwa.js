@@ -48,15 +48,13 @@
   $('welcomeClose')?.addEventListener('click',dismissWelcome);
   $('welcomeTraining')?.addEventListener('click',()=>{
     dismissWelcome();
-    $('trainingStake').value='0';
-    $('training')?.scrollIntoView({behavior:'smooth',block:'center'});
-    $('training')?.focus();
+    $('trainingFree')?.click();
   });
   $('welcomePublic')?.addEventListener('click',()=>{
     dismissWelcome();
     $('publicBrowse')?.click();
   });
-  $('showGuideFromLobby')?.addEventListener('click',()=>show(tutorial));
+  $('showGuideFromLobby')?.addEventListener('click',()=>show($('guide')));
   if(!invite){
     let seen=false;
     try{seen=localStorage.getItem(seenKey)==='1'}catch(e){}
