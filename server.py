@@ -631,6 +631,134 @@ async def websocket(request):
                     notice(r,f"{p['name']} desconectou (pode reconectar).")
     return ws
 
+def valid_origin(request):
+    origin=request.headers.get('Origin','')
+    if not origin:
+        # GETs sem Origin (navegação normal) são permitidos. Os endpoints
+        # mutáveis exigem Origin; o handshake de navegador WebSocket o fornece.
+        return request.method=='GET' and request.path!='/ws'
+    parsed=urlparse(origin)
+    return parsed.scheme in ('http','https') and parsed.netloc.lower()==request.host.lower()
+
+
+def auth_limit(request,kind,maximum,window):
+    # Defesa adicional; as tentativas por IP/usuário devem ser monitoradas
+    # em Redis antes de ampliar o serviço para múltiplas instâncias.
+    key=(kind,request.remote or 'unknown')
+    now=time.monotonic()
+    tries=[when for when in AUTH_RATE.get(key,[]) if now-when<window]
+    if len(tries)>=maximum:
+        raise web.HTTPTooManyRequests(text='Muitas tentativas. Tente mais tarde.')
+    tries.append(now)
+    AUTH_RATE[key]=tries
+    if len(AUTH_RATE)>15000:
+        AUTH_RATE.clear()
+
+
+def auth_json(payload,status=200):
+    return web.json_response(payload,status=status,
+        headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'})
+
+
+def set_auth_cookie(request,response,token):
+    secure=request.secure or request.headers.get('X-Forwarded-Proto')=='https' or (
+        request.host.split(':')[0] not in ('localhost','127.0.0.1'))
+    response.set_cookie(AUTH_COOKIE,token,max_age=accounts.SESSION_SECONDS,
+        httponly=True,secure=secure,samesite='Lax',path='/')
+
+
+async def read_auth_body(request):
+    if not valid_origin(request):
+        raise web.HTTPForbidden(text='Origem não autorizada.')
+    if request.content_length is not None and request.content_length>4096:
+        raise web.HTTPRequestEntityTooLarge(max_size=4096,actual_size=request.content_length)
+    raw=await request.content.read(4097)
+    if len(raw)>4096:
+        raise web.HTTPRequestEntityTooLarge(max_size=4096,actual_size=len(raw))
+    try:
+        obj=json.loads(raw)
+    except (ValueError,UnicodeDecodeError):
+        raise web.HTTPBadRequest(text='Dados inválidos.')
+    if not isinstance(obj,dict):raise web.HTTPBadRequest(text='Dados inválidos.')
+    return obj
+
+
+def wallet_for_account(account,history):
+    temp=create_player(account['name'],None,account['id'])
+    temp['test_balance_cents']=account['test_balance_cents']
+    temp['wallet_history']=history
+    temp['ad_free']=account['ad_free']
+    return wallet_public(temp)
+
+
+async def api_register(request):
+    auth_limit(request,'register',5,3600)
+    data=await read_auth_body(request)
+    try:
+        account,token=await asyncio.to_thread(accounts.create,
+            data.get('username'),data.get('password'))
+        history=await asyncio.to_thread(accounts.history,account['id'])
+    except accounts.AccountError as exc:
+        return auth_json({'error':str(exc)},400)
+    except psycopg.errors.UniqueViolation:
+        return auth_json({'error':'Este nome de usuário já está em uso.'},409)
+    except psycopg.Error:
+        return auth_json({'error':'Banco de contas temporariamente indisponível.'},503)
+    response=auth_json({'user':{'username':account['username'],'name':account['name']},
+        'wallet':wallet_for_account(account,history)},201)
+    set_auth_cookie(request,response,token)
+    return response
+
+
+async def api_login(request):
+    auth_limit(request,'login',12,900)
+    data=await read_auth_body(request)
+    try:
+        account,token=await asyncio.to_thread(accounts.login,
+            data.get('username'),data.get('password'))
+        history=await asyncio.to_thread(accounts.history,account['id'])
+    except accounts.AuthError:
+        return auth_json({'error':'Login ou senha incorretos.'},401)
+    except accounts.AccountError as exc:
+        return auth_json({'error':str(exc)},400)
+    except psycopg.Error:
+        return auth_json({'error':'Banco de contas temporariamente indisponível.'},503)
+    response=auth_json({'user':{'username':account['username'],'name':account['name']},
+        'wallet':wallet_for_account(account,history)})
+    set_auth_cookie(request,response,token)
+    return response
+
+
+async def api_me(request):
+    token=request.cookies.get(AUTH_COOKIE)
+    try:
+        account=await asyncio.to_thread(accounts.from_session,token)
+        if not account:
+            return auth_json({'error':'Entre ou crie uma conta para jogar.'},401)
+        hist=await asyncio.to_thread(accounts.history,account['id'])
+    except (accounts.AccountError,psycopg.Error):
+        return auth_json({'error':'Banco de contas temporariamente indisponível.'},503)
+    return auth_json({'user':{'username':account['username'],'name':account['name']},
+        'wallet':wallet_for_account(account,hist)})
+
+
+async def api_logout(request):
+    await read_auth_body(request)
+    token=request.cookies.get(AUTH_COOKIE)
+    try:
+        account=await asyncio.to_thread(accounts.from_session,token)
+        await asyncio.to_thread(accounts.logout,token)
+    except (accounts.AccountError,psycopg.Error):
+        return auth_json({'error':'Não foi possível encerrar a sessão.'},503)
+    if account:
+        online=USERS.get(account['id'])
+        if online and active_ws(online):
+            await online['ws'].close(code=1008,message=b'Sessao encerrada')
+    response=auth_json({'ok':True})
+    response.del_cookie(AUTH_COOKIE,path='/')
+    return response
+
+
 async def index(request):
     return web.FileResponse(ROOT/'index.html',headers={'Cache-Control':'no-store'})
 
@@ -750,8 +878,25 @@ async def public_config(request):
         'donation_pix_owner':DONATION_PIX_OWNER,'donation_enabled':bool(DONATION_PIX_KEY),
         'withdrawals_enabled':False,'payments_enabled':False,'wallet_types':['test'],'real_betting_enabled':False})
 
-app=web.Application()
+async def initialize_accounts(app):
+    if not accounts.DATABASE_URL:
+        # Sem banco, o acesso falha de maneira segura; não criar carteiras
+        # temporárias que desapareceriam após o próximo deploy.
+        logging.getLogger('blefe.auth').error('DATABASE_URL não configurado: login indisponível.')
+        return
+    try:
+        await asyncio.to_thread(accounts.setup)
+    except Exception:
+        logging.getLogger('blefe.auth').exception('Falha na inicialização do banco de contas.')
+
+
+app=web.Application(client_max_size=4096)
+app.on_startup.append(initialize_accounts)
 app.router.add_get('/',index)
+app.router.add_post('/api/auth/register',api_register)
+app.router.add_post('/api/auth/login',api_login)
+app.router.add_post('/api/auth/logout',api_logout)
+app.router.add_get('/api/auth/me',api_me)
 app.router.add_get('/manifest.webmanifest',pwa_manifest)
 app.router.add_get('/sw.js',pwa_service_worker)
 app.router.add_get('/icons/icon-{size}.png',pwa_icon)
