@@ -40,6 +40,7 @@ class ShopCatalogTests(unittest.TestCase):
             ('table','back_classic'),
             ('back','back_not_real'),
             ('frame','../../etc/passwd'),
+            ([], 'back_classic'),
         ):
             with self.subTest(slot=slot,product=product):
                 with self.assertRaises(cosmetics.ShopError):
