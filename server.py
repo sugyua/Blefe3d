@@ -7,6 +7,7 @@ from pwa_icons import icon_png
 from urllib.parse import urlparse
 import psycopg
 import accounts
+import cosmetics
 
 ROOT = Path(__file__).parent / 'public'
 ROOMS = {}
@@ -136,7 +137,9 @@ def send_room(room, type_, **data):
 def info(room):
     pending=room['pending']
     return {'code':room['code'],'host':room['host'],'started':room['started'],'mode':room['mode'],'visibility':room.get('visibility','private'),
-    'players':[{'id':p['id'],'name':p['name'],'bot':p['bot'],'connected':p.get('ws') is not None and not p['ws'].closed if p.get('ws') else p['bot'],'cards':len(p['hand']),'strikes':0,'out':p['out'],'spectator':p.get('spectator',False),'media':p.get('media',False)} for p in room['players']],
+    'players':[{'id':p['id'],'name':p['name'],'bot':p['bot'],'connected':p.get('ws') is not None and not p['ws'].closed if p.get('ws') else p['bot'],'cards':len(p['hand']),'strikes':0,'out':p['out'],'spectator':p.get('spectator',False),'media':p.get('media',False),
+               'cosmetics':dict(p.get('cosmetics') or cosmetics.DEFAULTS)}
+               for p in room['players']],
     'turn':room['turn'],'color':room['color'],'top':({'rank':'hidden','color':room['color']} if room.get('hidden_top') else room['top']),'direction':room['direction'],
     'pending':{'player':pending['player'],'claim':pending['claim'],'color':pending['color']} if pending else None,
     'draw_stack':room.get('draw_stack',0),'stack_count':room.get('stack_count',0),
@@ -451,7 +454,7 @@ def bots_schedule(room):
 
 def create_player(name,ws,token=None):
     pid=token or secrets.token_urlsafe(18)
-    return {'id':pid,'name':str(name).strip()[:20] or 'Jogador','ws':ws,'hand':[],'strikes':0,'out':False,'spectator':False,'bot':False,'room':None,'media':False,'authenticated':False,'wallet_persistent':False,'test_balance_cents':TEST_START_BALANCE_CENTS,'wallet_history':[{'amount_cents':TEST_START_BALANCE_CENTS,'description':'Bônus único de boas-vindas para testes','at':int(time.time())}],'ad_free':False}
+    return {'id':pid,'name':str(name).strip()[:20] or 'Jogador','ws':ws,'hand':[],'strikes':0,'out':False,'spectator':False,'bot':False,'room':None,'media':False,'authenticated':False,'wallet_persistent':False,'test_balance_cents':TEST_START_BALANCE_CENTS,'wallet_history':[{'amount_cents':TEST_START_BALANCE_CENTS,'description':'Bônus único de boas-vindas para testes','at':int(time.time())}],'ad_free':False,'cosmetics':dict(cosmetics.DEFAULTS)}
 
 def error(ws,message): emit(ws,'error',message=message)
 
@@ -503,9 +506,17 @@ async def websocket(request):
                     p['wallet_history']=await asyncio.to_thread(accounts.history,account_id)
                 except (accounts.AccountError,psycopg.Error):
                     p['wallet_history']=[]
+                try:
+                    shop=await asyncio.to_thread(accounts.cosmetic_state,account_id)
+                    p['cosmetics']=shop['equipped']
+                except (accounts.AccountError,psycopg.Error):
+                    p['cosmetics']=dict(cosmetics.DEFAULTS)
+                if p['room'] in ROOMS:
+                    sync(ROOMS[p['room']])
                 emit(ws,'welcome',id=p['id'],room=p['room'],wallet=wallet_public(p),
                      user={'username':account['username'],'name':account['name'],
-                           'guest':bool(account.get('guest',False))})
+                           'guest':bool(account.get('guest',False))},
+                     cosmetics=p['cosmetics'])
                 continue
             if not p: error(ws,'Identificação necessária.');continue
             room=ROOMS.get(p['room']) if p['room'] else None
@@ -730,6 +741,54 @@ async def api_guest_start(request):
     return response
 
 
+async def shop_account(request):
+    """Somente sessão HttpOnly autenticada ou de convidado; nunca IP/nome do JSON."""
+    try:
+        account=await asyncio.to_thread(accounts.from_session,request.cookies.get(AUTH_COOKIE))
+        if not account:
+            account=await asyncio.to_thread(accounts.from_guest_session,
+                                            request.cookies.get(GUEST_COOKIE))
+    except (accounts.AccountError,psycopg.Error):
+        raise web.HTTPServiceUnavailable(text='Inventário indisponível.')
+    if not account:
+        raise web.HTTPUnauthorized(text='Abra o jogo para iniciar uma sessão protegida.')
+    return account
+
+
+async def api_shop_catalog(request):
+    return auth_json(cosmetics.catalog())
+
+
+async def api_shop_me(request):
+    account=await shop_account(request)
+    try:
+        state=await asyncio.to_thread(accounts.cosmetic_state,account['id'])
+    except (accounts.AccountError,psycopg.Error):
+        return auth_json({'error':'Não foi possível consultar o inventário.'},503)
+    return auth_json(state)
+
+
+async def api_shop_equip(request):
+    # read_auth_body valida Origin, JSON, tamanho máximo e o uso de POST.
+    data=await read_auth_body(request)
+    account=await shop_account(request)
+    try:
+        state=await asyncio.to_thread(accounts.equip_cosmetic,
+            account['id'],data.get('slot'),data.get('product_id'))
+    except cosmetics.LockedCosmetic as exc:
+        return auth_json({'error':str(exc)},403)
+    except cosmetics.ShopError as exc:
+        return auth_json({'error':str(exc)},400)
+    except (accounts.AccountError,psycopg.Error):
+        return auth_json({'error':'Não foi possível salvar a personalização.'},503)
+    online=USERS.get(account['id'])
+    if online:
+        online['cosmetics']=state['equipped']
+        if online.get('room') in ROOMS:
+            sync(ROOMS[online['room']])
+    return auth_json(state)
+
+
 async def api_register(request):
     auth_limit(request,'register',5,3600)
     data=await read_auth_body(request)
@@ -938,6 +997,9 @@ app=web.Application(client_max_size=4096)
 app.on_startup.append(initialize_accounts)
 app.router.add_get('/',index)
 app.router.add_post('/api/guest/start',api_guest_start)
+app.router.add_get('/api/shop/catalog',api_shop_catalog)
+app.router.add_get('/api/shop/me',api_shop_me)
+app.router.add_post('/api/shop/equip',api_shop_equip)
 app.router.add_post('/api/auth/register',api_register)
 app.router.add_post('/api/auth/login',api_login)
 app.router.add_post('/api/auth/logout',api_logout)
