@@ -345,3 +345,17 @@
   .accountGreeting{max-width:66px;font-size:10px}
   #lobby .welcome{padding:15px}
 }
+
+
+/* Visitante pode jogar com saldo fictício. Depósito só aparece para conta logada. */
+.accountBar .depositButton{background:#20583f;border:1px solid #56a985;color:#e4ffed;font-weight:850}
+.accountBar .depositButton:hover,.accountBar .depositButton:focus-visible{background:#246b4c}
+.depositDialog{width:min(95vw,420px)!important;text-align:left}
+.depositDialog h2{font-size:clamp(21px,5.5vw,28px);margin:9px 0;color:#f9dfa4;line-height:1.2}
+.depositDialog p{font-size:13px;line-height:1.6;color:#d7e3ee;margin:10px 0}
+.depositDialog button{width:100%;min-height:44px}
+@media(max-width:430px){
+  .accountBar .accountGreeting{display:none}
+  .accountControls{gap:5px}
+  .accountBar .depositButton{padding:7px 8px}
+}
